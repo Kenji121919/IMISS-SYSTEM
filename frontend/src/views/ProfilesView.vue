@@ -69,7 +69,10 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import api from '@/api/axios'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 
 const profiles = ref([])
 const selectedProfile = ref(null)
@@ -79,18 +82,34 @@ const showModal = ref(false)
 const errorMessage = ref('')
 const shakeError = ref(false)
 
-// LOAD
+/* =========================
+   LOAD PROFILES
+========================= */
 onMounted(async () => {
-  const userId = localStorage.getItem('userId')
+  try {
+    const token = localStorage.getItem('token')
+    const user = localStorage.getItem('user')
 
-  const res = await axios.get(
-    `http://localhost:3000/profiles/${userId}`
-  )
+    if (!token || !user) {
+      profiles.value = []
+      return
+    }
 
-  profiles.value = res.data
+    const parsedUser = JSON.parse(user)
+    const userId = parsedUser.id
+
+    const res = await api.get(`/profiles/${userId}`)
+
+    profiles.value = res.data
+  } catch (err) {
+    console.error('Failed to load profiles:', err)
+    profiles.value = []
+  }
 })
 
-// OPEN MODAL
+/* =========================
+   OPEN MODAL
+========================= */
 const openModal = (profile) => {
   selectedProfile.value = profile
   pin.value = ''
@@ -98,7 +117,9 @@ const openModal = (profile) => {
   showModal.value = true
 }
 
-// CLOSE MODAL
+/* =========================
+   CLOSE MODAL
+========================= */
 const closeModal = () => {
   showModal.value = false
   selectedProfile.value = null
@@ -106,20 +127,58 @@ const closeModal = () => {
   errorMessage.value = ''
 }
 
-// VERIFY PIN
-const verifyPin = () => {
+/* =========================
+   VERIFY PIN
+========================= */
+const verifyPin = async () => {
+  if (!selectedProfile.value) return
+
   if (pin.value === selectedProfile.value.pin) {
-    localStorage.setItem('profile', JSON.stringify(selectedProfile.value))
-    window.location.href = '/dashboard'
+    try {
+      console.log('STEP 1: PIN OK')
+
+      const res = await api.get(
+        `/profiles/single/${selectedProfile.value.id}`
+      )
+
+      console.log('STEP 2: PROFILE RECEIVED', res.data)
+
+      const profile = res.data
+
+      // 👇 PUT IT HERE (THIS IS THE CORRECT PLACE)
+      const activeProfile = {
+        id: profile.id,
+        userId: profile.userId || profile.id,
+        team: profile.name   // ⚠️ IMPORTANT FIX
+      }
+
+      console.log('SAVING PROFILE:', activeProfile)
+
+      localStorage.setItem(
+        'activeProfile',
+        JSON.stringify(activeProfile)
+      )
+
+      showModal.value = false
+
+      window.location.href = '/dashboard'
+
+    } catch (err) {
+      console.error('Profile fetch failed:', err)
+    }
+
   } else {
     errorMessage.value = 'Incorrect PIN'
-
     shakeError.value = true
-    setTimeout(() => (shakeError.value = false), 400)
 
+    setTimeout(() => (shakeError.value = false), 400)
     pin.value = ''
   }
+
 }
+
+
+
 </script>
 
 <style>

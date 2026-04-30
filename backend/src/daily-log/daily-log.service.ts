@@ -10,12 +10,23 @@ export class DailyLogService {
     private repo: Repository<DailyLog>,
   ) {}
 
-  findAll() {
-    return this.repo.find()
+  findAll(team?: string) {
+    const query = this.repo.createQueryBuilder('log')
+
+    if (team && team !== 'All') {
+      query.where(
+        'LOWER(TRIM(log.team)) = LOWER(TRIM(:team))',
+        { team: team.trim() }
+      )
+    }
+
+    return query.getMany()
   }
 
+  
+
   create(data: any) {
-    return this.repo.save(data) // ✅ SAVES TO MYSQL
+    return this.repo.save(data)
   }
 
   delete(id: number) {
@@ -23,6 +34,6 @@ export class DailyLogService {
   }
 
   update(id: number, data: any) {
-  return this.repo.update(id, data)
-}
+    return this.repo.update(id, data)
+  }
 }

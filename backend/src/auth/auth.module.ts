@@ -1,12 +1,18 @@
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { User } from '../entities/user.entity';
-import { AuthService } from './auth.service';
-import { AuthController } from './auth.controller';
+import { Module } from '@nestjs/common'
+import { AuthService } from './auth.service'
+import { AuthController } from './auth.controller'
+import { JwtModule } from '@nestjs/jwt'
+import { JwtStrategy } from './jwt.strategy'
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User])],
-  controllers: [AuthController], // 🔥 REQUIRED
-  providers: [AuthService],
+  imports: [
+    JwtModule.register({
+      secret: 'SECRET_KEY', // same as your strategy
+      signOptions: { expiresIn: '8h' }
+    })
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy],
+  exports: [AuthService]
 })
 export class AuthModule {}

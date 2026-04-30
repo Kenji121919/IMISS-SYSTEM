@@ -1,35 +1,43 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt';
-import { User } from '../entities/user.entity';
+import { Injectable, UnauthorizedException } from '@nestjs/common'
+import * as bcrypt from 'bcrypt'
+import { JwtService } from '@nestjs/jwt'
 
 @Injectable()
 export class AuthService {
-  constructor(
-    @InjectRepository(User)
-    private userRepository: Repository<User>,
-  ) {}
+  constructor(private jwtService: JwtService) {}
 
-  // LOGIN
+  // TEMP USER (replace with DB later)
+  private users = [
+  {
+    id: 1,
+    username: 'admin',
+    password: bcrypt.hashSync('admin@123', 10),
+    role: 'ADMIN'
+  }
+]
+
   async login(username: string, password: string) {
-    const user = await this.userRepository.findOne({
-      where: { username },
-    });
+    const user = this.users.find(u => u.username === username)
 
-    if (!user) {
-      throw new Error('User not found');
-    }
+    if (!user) throw new UnauthorizedException('Invalid credentials')
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await bcrypt.compare(password, user.password)
 
-    if (!isMatch) {
-      throw new Error('Invalid password');
+    if (!isMatch) throw new UnauthorizedException('Invalid credentials')
+
+    const payload = {
+      sub: user.id,
+      username: user.username,
+      role: user.role
     }
 
     return {
-      message: 'Login successful',
-      userId: user.id,
-    };
+  access_token: this.jwtService.sign(payload),
+  user: {
+    id: user.id,        // 🔥 ADD THIS
+    username: user.username,
+    role: user.role
+  }
+}
   }
 }

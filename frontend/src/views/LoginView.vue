@@ -62,7 +62,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import axios from 'axios'
+import api from '@/api/axios'
 
 const username = ref('')
 const password = ref('')
@@ -74,30 +74,37 @@ const errorMessage = ref('')
 
 const login = async () => {
   loading.value = true
-  shakeError.value = false
   errorMessage.value = ''
+  shakeError.value = false
 
   try {
-    const res = await axios.post('http://localhost:3000/auth/login', {
+    const res = await api.post('/auth/login', {
       username: username.value,
       password: password.value,
     })
 
-    localStorage.setItem('userId', res.data.userId)
+    // ✅ STORE TOKEN
+    localStorage.setItem('token', res.data.access_token)
 
+    // ✅ STORE USER
+    localStorage.setItem(
+      'user',
+      JSON.stringify(res.data.user)
+    )
+
+    // go to profiles
     window.location.href = '/profiles'
 
   } catch (err) {
-    console.log(err)
+    console.error(err)
+
+    errorMessage.value = 'Invalid username or password'
+    shakeError.value = true
 
     username.value = ''
     password.value = ''
 
-    errorMessage.value = 'Invalid username or password'
-
-    shakeError.value = true
     setTimeout(() => (shakeError.value = false), 500)
-
     setTimeout(() => (errorMessage.value = ''), 3000)
 
   } finally {

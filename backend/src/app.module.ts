@@ -4,7 +4,7 @@ import { ProfilesModule } from './profiles/profiles.module';
 import { User } from './entities/user.entity';
 import { Profile } from './entities/profile.entity';
 import { DailyLog } from './entities/daily-log.entity';
-import { AuthModule } from './auth/auth.module'; // 🔥 ADD THIS
+import { AuthModule } from './auth/auth.module'; 
 import { DailyLogModule } from './daily-log/daily-log.module'
 
 @Module({

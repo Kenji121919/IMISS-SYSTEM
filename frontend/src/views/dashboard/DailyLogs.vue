@@ -94,7 +94,39 @@
 
       <input v-model="form.concern" placeholder="Concern" />
       <input v-model="form.department" placeholder="Department" />
-      <input v-model="form.assignedTo" placeholder="Assigned To" />
+      <!-- ASSIGNED TO (SEARCHABLE) -->
+<div class="assigned-wrapper">
+
+  <div class="input-container">
+    <input
+      v-model="searchPerson"
+      @focus="showDropdown = true"
+      @input="filterPeople"
+      placeholder="Assign to..."
+    />
+
+    <!-- CLEAR X INSIDE INPUT -->
+    <button
+      v-if="searchPerson"
+      class="clear-btn"
+      @click="clearAssigned"
+    >
+      ✕
+    </button>
+  </div>
+
+  <!-- DROPDOWN -->
+  <ul v-if="showDropdown && filteredPeople.length" class="dropdown">
+    <li
+      v-for="person in filteredPeople"
+      :key="person"
+      @click="selectPerson(person)"
+    >
+      {{ person }}
+    </li>
+  </ul>
+
+</div>
 
       <select v-model="form.team">
         <option>Technical</option>
@@ -137,17 +169,39 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
+import api from '@/api/axios'
+import { useRoute } from 'vue-router'
 
-/* ICONS (Lucide Vue) */
-import { Plus, Pencil, Trash2, Check, X, Activity, Clipboard } from 'lucide-vue-next'
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Clipboard,
+  FileText,
+  X,
+  Check
+} from 'lucide-vue-next'
 
+/* =========================
+   ROUTE
+========================= */
+const route = useRoute()
+const routeTeam = computed(() => route.meta.team || 'All')
+
+/* =========================
+   STATE
+========================= */
 const logs = ref([])
 const search = ref('')
+const currentProfile = ref(null)
+
 const openModal = ref(false)
 const isEditMode = ref(false)
 const selectedId = ref(null)
 
+/* =========================
+   FORM
+========================= */
 const form = ref({
   concern: '',
   department: '',
@@ -157,21 +211,95 @@ const form = ref({
   remarks: ''
 })
 
-/* LOAD */
-const loadLogs = async () => {
-  const res = await axios.get('http://localhost:3000/daily-logs')
-  logs.value = res.data
-}
+/* =========================
+   ASSIGNED TO DROPDOWN
+========================= */
+const searchPerson = ref('')
+const showDropdown = ref(false)
 
-/* FILTER */
-const filteredLogs = computed(() => {
-  return logs.value.filter(log =>
-    log.concern?.toLowerCase().includes(search.value.toLowerCase()) ||
-    log.department?.toLowerCase().includes(search.value.toLowerCase())
+const assignedToOptions = ref([
+  'Juan Dela Cruz',
+  'Maria Santos',
+  'Tech Support 1',
+  'Tech Support 2'
+])
+
+const filteredPeople = computed(() => {
+  if (!searchPerson.value) return assignedToOptions.value
+
+  return assignedToOptions.value.filter(p =>
+    p.toLowerCase().includes(searchPerson.value.toLowerCase())
   )
 })
 
-/* ADD */
+const selectPerson = (person) => {
+  form.value.assignedTo = person
+  searchPerson.value = person
+  showDropdown.value = false
+}
+
+const clearAssigned = () => {
+  form.value.assignedTo = ''
+  searchPerson.value = ''
+}
+
+/* =========================
+   PROFILE (FIXED)
+========================= */
+const loadProfile = () => {
+  const saved = localStorage.getItem('activeProfile')
+
+  try {
+    currentProfile.value = saved ? JSON.parse(saved) : null
+    console.log('ACTIVE PROFILE:', currentProfile.value)
+  } catch (e) {
+    currentProfile.value = null
+  }
+}
+
+/* =========================
+   LOAD LOGS (FIXED ORDER + ADMIN LOGIC)
+========================= */
+const loadLogs = async () => {
+  try {
+    const profileTeam = currentProfile.value?.team
+
+    // ✅ Admin / All bypass filtering
+    const team =
+      profileTeam && !['All', 'Admin'].includes(profileTeam)
+        ? profileTeam
+        : undefined
+
+    console.log('SENDING TEAM:', team)
+
+    const res = await api.get('/daily-logs', {
+      params: { team }
+    })
+
+    logs.value = res.data || []
+  } catch (err) {
+    console.error('Load logs error:', err)
+    logs.value = []
+  }
+}
+
+/* =========================
+   SEARCH FILTER ONLY
+========================= */
+const filteredLogs = computed(() => {
+  const list = logs.value || []
+  const s = (search.value || '').toLowerCase()
+
+  return list.filter(log =>
+    (log.concern || '').toLowerCase().includes(s) ||
+    (log.department || '').toLowerCase().includes(s) ||
+    (log.assignedTo || '').toLowerCase().includes(s)
+  )
+})
+
+/* =========================
+   MODAL
+========================= */
 const openAdd = () => {
   isEditMode.value = false
   selectedId.value = null
@@ -179,21 +307,21 @@ const openAdd = () => {
   openModal.value = true
 }
 
-/* EDIT */
 const openEdit = (log) => {
   isEditMode.value = true
   selectedId.value = log.id
+
   form.value = { ...log }
+  searchPerson.value = log.assignedTo || ''
+
   openModal.value = true
 }
 
-/* CLOSE */
 const closeModal = () => {
   openModal.value = false
   resetForm()
 }
 
-/* RESET */
 const resetForm = () => {
   form.value = {
     concern: '',
@@ -203,35 +331,54 @@ const resetForm = () => {
     status: 'Queue',
     remarks: ''
   }
+
+  searchPerson.value = ''
 }
 
-/* SAVE */
+/* =========================
+   SAVE
+========================= */
 const saveLog = async () => {
-  const now = new Date()
+  try {
+    const now = new Date()
 
-  if (isEditMode.value) {
-    await axios.patch(`http://localhost:3000/daily-logs/${selectedId.value}`, form.value)
-  } else {
-    await axios.post('http://localhost:3000/daily-logs', {
-      ...form.value,
-      date: now.toISOString().split('T')[0],
-      time: now.toLocaleTimeString()
-    })
+    if (isEditMode.value) {
+      await api.patch(`/daily-logs/${selectedId.value}`, form.value)
+    } else {
+      await api.post('/daily-logs', {
+        ...form.value,
+        date: now.toISOString().split('T')[0],
+        time: now.toLocaleTimeString()
+      })
+    }
+
+    closeModal()
+    await loadLogs()
+  } catch (err) {
+    console.error('Save error:', err)
   }
-
-  closeModal()
-  await loadLogs()
 }
 
-/* DELETE */
+/* =========================
+   DELETE
+========================= */
 const deleteLog = async (id) => {
-  await axios.delete(`http://localhost:3000/daily-logs/${id}`)
-  await loadLogs()
+  try {
+    await api.delete(`/daily-logs/${id}`)
+    await loadLogs()
+  } catch (err) {
+    console.error('Delete error:', err)
+  }
 }
 
-onMounted(loadLogs)
+/* =========================
+   INIT (IMPORTANT FIX)
+========================= */
+onMounted(async () => {
+  loadProfile()
+  await loadLogs()
+})
 </script>
-
 <style>
 /* ===== BASE ===== */
 .container {
@@ -428,6 +575,61 @@ onMounted(loadLogs)
   animation: pop 0.2s ease;
 }
 
+.assigned-wrapper {
+  position: relative;
+}
+
+/* INPUT CONTAINER */
+.input-container {
+  position: relative;
+}
+
+.input-container input {
+  width: 100%;
+  padding: 10px 35px 10px 10px; /* space for X */
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+/* 🔥 X BUTTON INSIDE INPUT */
+.clear-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  color: #888;
+}
+
+.clear-btn:hover {
+  color: red;
+}
+
+/* DROPDOWN */
+.dropdown {
+  
+  
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  margin-top: 5px;
+  max-height: 100px;
+  overflow-y: auto;
+  z-index: 10;
+   text-align: left;
+}
+
+.dropdown li {
+  padding: 10px;
+  cursor: pointer;
+}
+
+.dropdown li:hover {
+  background: #f5f5f5;
+}
 /* HEADER */
 .modal-header {
   display: flex;

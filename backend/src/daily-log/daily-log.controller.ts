@@ -1,27 +1,55 @@
-import { Controller, Get, Post, Body, Delete, Param, Patch } from '@nestjs/common';
-import { DailyLogService } from './daily-log.service';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common'
+
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
+import { DailyLogService } from './daily-log.service'
 
 @Controller('daily-logs')
-export class DailyLogController {
+export class DailyLogsController {
   constructor(private readonly service: DailyLogService) {}
 
+  // =========================
+  // GET LOGS (FILTER BY TEAM)
+  // =========================
   @Get()
-  findAll() {
-    return this.service.findAll();
+  @UseGuards(JwtAuthGuard)
+  findAll(@Query('team') team: string) {
+    return this.service.findAll(team)
   }
 
+  // =========================
+  // CREATE LOG
+  // =========================
   @Post()
+  @UseGuards(JwtAuthGuard)
   create(@Body() data: any) {
-    return this.service.create(data);
+    return this.service.create(data)
   }
 
-  @Delete(':id')
-  delete(@Param('id') id: string) {
-    return this.service.delete(Number(id));
-  }
-
+  // =========================
+  // UPDATE LOG
+  // =========================
   @Patch(':id')
-update(@Param('id') id: number, @Body() data: any) {
-  return this.service.update(id, data)
-}
+  @UseGuards(JwtAuthGuard)
+  update(@Param('id') id: string, @Body() data: any) {
+    return this.service.update(+id, data)
+  }
+
+  // =========================
+  // DELETE LOG
+  // =========================
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard)
+  remove(@Param('id') id: string) {
+    return this.service.delete(+id)
+  }
 }

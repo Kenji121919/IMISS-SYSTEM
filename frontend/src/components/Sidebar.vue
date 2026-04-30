@@ -6,7 +6,7 @@
       <h2 v-if="!collapsed" class="logo">IMISS</h2>
 
       <button class="toggle" @click="$emit('toggle')">
-        ☰
+      <Menu />
       </button>
     </div>
 
@@ -100,7 +100,9 @@ import {
   Link,
   Upload,
   Lock,
-  LogOut
+  LogOut,
+  Menu
+
 } from 'lucide-vue-next'
 
 defineProps({
@@ -142,7 +144,7 @@ const logout = () => {
 .menu {
   flex: 1;
   list-style: none;
-  padding: 0;
+  padding: 15px;
   margin: 0;
 }
 
@@ -159,13 +161,29 @@ const logout = () => {
   position: relative;
 }
 
-/* 🔥 HOVER ANIMATION */
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  color: white;
+  background-color: black;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: 0.3s;
+  position: relative;
+}
+.toggle:hover {
+  background: #222;
+  transform: translateX(3px);
+}
+/* HOVER ANIMATION */
 .link:hover {
   background: #222;
   transform: translateX(3px);
 }
 
-/* 🔥 ACTIVE GLOW */
+/* ACTIVE GLOW */
 .link.active {
   background: #1e90ff;
   box-shadow: 0 0 12px #1e90ff;
@@ -181,6 +199,7 @@ const logout = () => {
 .sidebar.collapsed .link {
   justify-content: center;
 }
+
 
 /* TOOLTIP WHEN COLLAPSED */
 .sidebar.collapsed .link:hover::after {
