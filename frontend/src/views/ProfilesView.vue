@@ -1,6 +1,11 @@
 <template>
   <div class="profile-wrapper">
 
+    <!-- LOGOUT BUTTON -->
+    <button class="logout-btn" @click="logout">
+      Logout
+    </button>
+
     <!-- TITLE -->
     <div class="title">
       <h1>Who's using the system?</h1>
@@ -33,7 +38,6 @@
         <h2>{{ selectedProfile?.name }}</h2>
         <p>Enter your PIN to continue</p>
 
-        <!-- ERROR MESSAGE -->
         <div v-if="errorMessage" class="error-box">
           {{ errorMessage }}
         </div>
@@ -49,7 +53,6 @@
         />
 
         <div class="modal-actions">
-
           <button class="btn-primary" @click="verifyPin">
             Continue
           </button>
@@ -57,7 +60,6 @@
           <button class="btn-danger" @click="closeModal">
             Cancel
           </button>
-
         </div>
 
       </div>
@@ -96,11 +98,11 @@ onMounted(async () => {
     }
 
     const parsedUser = JSON.parse(user)
-    const userId = parsedUser.id
 
-    const res = await api.get(`/profiles/${userId}`)
+    const res = await api.get(`/profiles/${parsedUser.id}`)
 
     profiles.value = res.data
+
   } catch (err) {
     console.error('Failed to load profiles:', err)
     profiles.value = []
@@ -135,24 +137,17 @@ const verifyPin = async () => {
 
   if (pin.value === selectedProfile.value.pin) {
     try {
-      console.log('STEP 1: PIN OK')
-
       const res = await api.get(
         `/profiles/single/${selectedProfile.value.id}`
       )
 
-      console.log('STEP 2: PROFILE RECEIVED', res.data)
-
       const profile = res.data
 
-      // 👇 PUT IT HERE (THIS IS THE CORRECT PLACE)
       const activeProfile = {
         id: profile.id,
         userId: profile.userId || profile.id,
-        team: profile.name   // ⚠️ IMPORTANT FIX
+        team: profile.name
       }
-
-      console.log('SAVING PROFILE:', activeProfile)
 
       localStorage.setItem(
         'activeProfile',
@@ -161,7 +156,7 @@ const verifyPin = async () => {
 
       showModal.value = false
 
-      window.location.href = '/dashboard'
+      router.replace('/dashboard')
 
     } catch (err) {
       console.error('Profile fetch failed:', err)
@@ -174,15 +169,29 @@ const verifyPin = async () => {
     setTimeout(() => (shakeError.value = false), 400)
     pin.value = ''
   }
-
 }
 
+/* =========================
+   LOGOUT (FIXED)
+========================= */
+const logout = () => {
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+  localStorage.removeItem('activeProfile')
 
+  sessionStorage.setItem('loggedOut', 'true')
 
+  router.replace('/')
+}
 </script>
 
 <style>
-/* WRAPPER */
+.link {
+  color: #1e90ff;
+  cursor: pointer;
+  font-weight: bold;
+  margin-left: 5px;
+}
 .profile-wrapper {
   min-height: 100vh;
   background: linear-gradient(135deg, #111, #222);
@@ -190,6 +199,20 @@ const verifyPin = async () => {
   flex-direction: column;
   align-items: center;
   padding: 60px 20px;
+  position: relative;
+}
+
+/* LOGOUT BUTTON */
+.logout-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: #ff4d4d;
+  color: white;
+  border: none;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
 }
 
 /* TITLE */
@@ -201,7 +224,6 @@ const verifyPin = async () => {
 
 .title p {
   color: #aaa;
-  font-size: 14px;
 }
 
 /* GRID */
@@ -247,47 +269,20 @@ const verifyPin = async () => {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.75);
-  backdrop-filter: blur(4px);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 9999;
 }
 
-/* MODAL CARD */
 .modal-card {
   background: white;
-  width: 90%;
-  max-width: 320px;
+  width: 320px;
   padding: 25px;
   border-radius: 14px;
   text-align: center;
 }
 
-/* SHAKE */
-.shake {
-  animation: shake 0.4s ease;
-}
-
-@keyframes shake {
-  0% { transform: translateX(0); }
-  25% { transform: translateX(-6px); }
-  50% { transform: translateX(6px); }
-  75% { transform: translateX(-6px); }
-  100% { transform: translateX(0); }
-}
-
-/* ERROR BOX */
-.error-box {
-  background: #ffe5e5;
-  color: #d10000;
-  padding: 8px;
-  border-radius: 8px;
-  font-size: 13px;
-  margin: 10px 0;
-}
-
-/* PIN INPUT */
+/* INPUT */
 .pin-input {
   width: 120px;
   padding: 12px;
@@ -307,21 +302,30 @@ const verifyPin = async () => {
   margin-top: 15px;
 }
 
-.btn-primary,
+.btn-primary {
+  flex: 1;
+  padding: 10px;
+  background: #1e90ff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+}
+
 .btn-danger {
   flex: 1;
   padding: 10px;
+  background: #ff4d4d;
+  color: white;
   border: none;
   border-radius: 8px;
-  cursor: pointer;
-  color: white;
 }
 
-.btn-primary {
-  background: #1e90ff;
-}
-
-.btn-danger {
-  background: #ff4d4d;
+/* ERROR */
+.error-box {
+  background: #ffe5e5;
+  color: #d10000;
+  padding: 8px;
+  border-radius: 8px;
+  margin: 10px 0;
 }
 </style>

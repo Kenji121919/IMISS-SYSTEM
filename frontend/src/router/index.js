@@ -1,123 +1,57 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import LoginView from '../views/LoginView.vue'
+import RegisterView from '../views/RegisterView.vue'
 import ProfilesView from '../views/ProfilesView.vue'
-import Dashboard from '../views/dashboard/Dashboard.vue'
 
 const routes = [
-  // =========================
-  // LOGIN
-  // =========================
   {
     path: '/',
-    component: LoginView
+    name: 'login',
+    component: LoginView,
   },
-
-  // =========================
-  // PROFILES
-  // =========================
+  {
+    path: '/register',
+    name: 'register',
+    component: RegisterView,
+  },
   {
     path: '/profiles',
-    component: ProfilesView
-  },
-
-  // =========================
-  // DASHBOARD (PARENT ROUTE)
-  // =========================
-  {
-    path: '/dashboard',
-    component: Dashboard,
+    name: 'profiles',
+    component: ProfilesView,
     meta: { requiresAuth: true },
-    children: [
-      // DEFAULT REDIRECT
-      {
-        path: '',
-        redirect: '/dashboard/monitoring'
-      },
-
-      // =========================
-      // CHILD ROUTES (NO :team PARAM)
-      // =========================
-
-      {
-        path: 'monitoring',
-        component: () => import('../views/dashboard/Monitoring.vue'),
-        meta: { team: 'Application' }
-      },
-
-      {
-        path: 'daily-logs',
-        component: () => import('../views/dashboard/DailyLogs.vue'),
-        meta: { team: 'All' }
-      },
-
-      {
-        path: 'troubleshooting',
-        component: () => import('../views/dashboard/Troubleshooting.vue'),
-        meta: { team: 'Technical' }
-      },
-
-      {
-        path: 'cable',
-        component: () => import('../views/dashboard/Cable.vue'),
-        meta: { team: 'Technical' }
-      },
-
-      {
-        path: 'kiosk',
-        component: () => import('../views/dashboard/Kiosk.vue'),
-        meta: { team: 'Application' }
-      },
-
-      {
-        path: 'routers',
-        component: () => import('../views/dashboard/Routers.vue'),
-        meta: { team: 'Networks' }
-      },
-
-      {
-        path: 'referral',
-        component: () => import('../views/dashboard/Referral.vue'),
-        meta: { team: 'Application' }
-      },
-
-      {
-        path: 'pullout',
-        component: () => import('../views/dashboard/Pullout.vue'),
-        meta: { team: 'Technical' }
-      },
-
-      {
-        path: 'change-pin',
-        component: () => import('../views/dashboard/ChangePin.vue'),
-        meta: { team: 'All' }
-      },
-    ]
-  }
+  },
 ]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
 })
 
-/* =========================
-   AUTH GUARD
-========================= */
+/* 🔥 AUTH GUARD (CLEAN VERSION) */
 router.beforeEach((to) => {
-  const user = localStorage.getItem('user')
-  const activeProfile = localStorage.getItem('activeProfile')
+  const token = localStorage.getItem('token')
 
-  const isLoggedIn = !!user
-  const hasProfile = !!activeProfile
+  const isLoggedIn =
+    !!token &&
+    token !== 'null' &&
+    token !== 'undefined'
 
-  // protect dashboard
-  if (to.path.startsWith('/dashboard')) {
-    if (!isLoggedIn) return '/'
-    if (!hasProfile) return '/profiles'
+  // protect private routes
+  if (to.meta.requiresAuth && !isLoggedIn) {
+    return { name: 'login' }
+  }
+
+  // allow register ALWAYS
+  if (to.name === 'register') {
+    return true
+  }
+
+  // block login only if already logged in
+  if (to.name === 'login' && isLoggedIn) {
+    return { name: 'profiles' }
   }
 
   return true
 })
-
 export default router
