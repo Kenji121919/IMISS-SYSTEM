@@ -14,7 +14,7 @@ import { DailyLogModule } from './daily-log/daily-log.module'
       host: 'localhost',
       port: 3306,
       username: 'root',
-      password: '',
+      password: '1234',
       database: 'imisslogs_db',
       entities: [User, Profile, DailyLog],
       synchronize: true,

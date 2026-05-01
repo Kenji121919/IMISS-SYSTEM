@@ -17,8 +17,8 @@ export class DailyLog {
   @Column()
   department!: string;
 
-  @Column()
-  ticketNumber!: string;
+  @Column({ nullable: true })
+ticketNumber!: number;
 
   @Column()
   receivedBy!: string;
