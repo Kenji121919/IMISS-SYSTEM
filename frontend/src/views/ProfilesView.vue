@@ -137,26 +137,22 @@ const verifyPin = async () => {
 
   if (pin.value === selectedProfile.value.pin) {
     try {
-      const res = await api.get(
-        `/profiles/single/${selectedProfile.value.id}`
-      )
-
+      const res = await api.get(`/profiles/single/${selectedProfile.value.id}`)
       const profile = res.data
 
       const activeProfile = {
         id: profile.id,
-        userId: profile.userId || profile.id,
-        team: profile.name
+        userId: profile.userId,
+        name: profile.name,   // ✅ FIX THIS
+        team: profile.team    // ✅ FIX THIS
       }
 
-      localStorage.setItem(
-        'activeProfile',
-        JSON.stringify(activeProfile)
-      )
+      localStorage.setItem('activeProfile', JSON.stringify(activeProfile))
 
       showModal.value = false
 
-      router.replace('/dashboard')
+      // 🔥 FORCE CLEAN RELOAD (IMPORTANT FIX)
+      window.location.href = '/dashboard'
 
     } catch (err) {
       console.error('Profile fetch failed:', err)
@@ -165,7 +161,6 @@ const verifyPin = async () => {
   } else {
     errorMessage.value = 'Incorrect PIN'
     shakeError.value = true
-
     setTimeout(() => (shakeError.value = false), 400)
     pin.value = ''
   }
@@ -183,6 +178,8 @@ const logout = () => {
 
   router.replace('/')
 }
+
+
 </script>
 
 <style>

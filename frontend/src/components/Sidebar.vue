@@ -30,7 +30,13 @@
       </li>
 
     </ul>
-
+<!-- BACK TO PROFILE -->
+<div class="profile-back">
+  <button @click="backToProfile">
+    <User class="icon" />
+    <span v-if="!collapsed">Back to Profile</span>
+  </button>
+</div>
     <!-- LOGOUT -->
     <div class="logout">
       <button @click="logout">
@@ -61,7 +67,7 @@ defineProps({
 const menuItems = ref([])
 
 /* =========================
-   LOAD SIDEBAR MENU (FIXED)
+   LOAD SIDEBAR MENU
 ========================= */
 onMounted(async () => {
   try {
@@ -72,12 +78,8 @@ onMounted(async () => {
 
     const isAdmin = activeProfile.team?.toLowerCase() === 'admin'
 
-    // ✅ FIX: load ALL modules (NOT user.id)
-    const res = await api.get('/modules')
-
+    const res = await api.get(`/modules/${user.id}`)
     const modules = res.data || []
-
-    console.log('Modules loaded:', modules)
 
     if (isAdmin) {
       menuItems.value = [
@@ -93,7 +95,6 @@ onMounted(async () => {
           path: '/dashboard/manage-modules',
           icon: Settings
         },
-
         ...modules.map(mod => ({
           id: mod.id,
           name: mod.name,
@@ -105,7 +106,11 @@ onMounted(async () => {
       menuItems.value = modules
         .filter(mod => {
           try {
-            const allowed = JSON.parse(mod.allowedProfiles || '[]')
+            const allowed =
+              typeof mod.allowedProfiles === 'string'
+                ? JSON.parse(mod.allowedProfiles)
+                : mod.allowedProfiles || []
+
             return allowed.includes(activeProfile.id)
           } catch {
             return false
@@ -121,9 +126,19 @@ onMounted(async () => {
 
   } catch (err) {
     console.error('Sidebar load error:', err)
-    menuItems.value = [] // prevent UI crash
+    menuItems.value = []
   }
 })
+
+/* =========================
+   SWITCH PROFILE (FIXED)
+========================= */
+const switchProfile = () => {
+  localStorage.removeItem('activeProfile')
+  localStorage.setItem('switchingProfile', '1')
+
+  window.location.href = '/profiles'
+}
 
 /* =========================
    LOGOUT
@@ -135,6 +150,27 @@ const logout = () => {
 </script>
 
 <style>
+
+.profile-back {
+  padding: 10px;
+}
+
+.profile-back button {
+  width: 100%;
+  background: #444;
+  border: none;
+  color: white;
+  padding: 10px;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.profile-back button:hover {
+  background: #555;
+}
 /* SIDEBAR */
 .sidebar {
   width: 240px;

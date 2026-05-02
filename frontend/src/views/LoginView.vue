@@ -68,7 +68,7 @@
       <!-- REGISTER -->
       <p class="register">
         Don’t have an account?
-        <router-link to="/register" class="link">
+        <router-link to="/register" class="link2">
         Register
         </router-link>
       </p>
@@ -280,7 +280,7 @@ input {
   cursor: pointer;
 }
 
-.register-link {
+.register-link2 {
   color: #1e90ff;
   cursor: pointer;
   font-weight: bold;

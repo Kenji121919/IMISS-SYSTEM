@@ -1,23 +1,41 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete
+} from '@nestjs/common'
 import { ModulesService } from './modules.service'
 
 @Controller('modules')
 export class ModulesController {
-  constructor(private readonly service: ModulesService) {}
+  constructor(private service: ModulesService) {}
 
-  @Get()
-  findAll() {
-    return this.service.findAll()
+  @Post()
+  create(@Body() body: any) {
+    return this.service.create(body)
   }
 
+  // ⚠️ IMPORTANT ORDER
   @Get('single/:id')
   findOne(@Param('id') id: string) {
     return this.service.findOne(Number(id))
   }
 
-  // ✅ ONLY KEEP IF YOU REALLY NEED CREATE MODULE
-  @Post()
-  create(@Body() body: any) {
-    return this.service.create(body)
+  @Get(':userId')
+  findAll(@Param('userId') userId: string) {
+    return this.service.findAll(Number(userId))
+  }
+
+  @Put(':id')
+  update(@Param('id') id: string, @Body() body: any) {
+    return this.service.update(Number(id), body)
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.service.delete(Number(id))
   }
 }

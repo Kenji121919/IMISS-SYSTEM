@@ -133,26 +133,37 @@ const loadModule = async () => {
   columns.value = safeParse(res.data.columns)
 }
 
+/* ================= NORMALIZE LOG VALUES ================= */
+const normalizeLog = (log) => {
+  const data = {}
+
+  if (log.values && Array.isArray(log.values)) {
+    log.values.forEach(v => {
+      const colName = v.column?.name || v.column
+      data[colName] = v.value
+    })
+  }
+
+  if (log.data && typeof log.data === 'object') {
+    Object.assign(data, log.data)
+  }
+
+  return {
+    ...log,
+    data
+  }
+}
+
 /* ================= LOAD LOGS ================= */
 const loadLogs = async () => {
   const res = await api.get(`/logs/module/${route.params.id}`)
 
-  logs.value = res.data
+  logs.value = res.data.map(normalizeLog)
 }
 
-/* ================= GET VALUE (FIXED) ================= */
+/* ================= GET VALUE ================= */
 const getValue = (log, columnName) => {
-  // ✅ NEW SYSTEM (LogValue)
-  if (log.values && Array.isArray(log.values)) {
-    return log.values.find(v => v.column === columnName)?.value || '-'
-  }
-
-  // ⚠️ OLD SYSTEM fallback
-  if (log.data) {
-    return log.data[columnName] ?? '-'
-  }
-
-  return '-'
+  return log.data?.[columnName] ?? '-'
 }
 
 /* ================= INPUT TYPE ================= */
@@ -169,6 +180,7 @@ const openAdd = () => {
   selectedId.value = null
 
   form.value = {}
+
   columns.value.forEach(c => {
     form.value[c.name] = ''
   })
@@ -181,17 +193,8 @@ const openEdit = (log) => {
   isEdit.value = true
   selectedId.value = log.id
 
-  const temp = {}
+  form.value = { ...log.data }
 
-  if (log.values) {
-    log.values.forEach(v => {
-      temp[v.column] = v.value
-    })
-  } else if (log.data) {
-    Object.assign(temp, log.data)
-  }
-
-  form.value = temp
   showModal.value = true
 }
 
@@ -224,11 +227,12 @@ const deleteLog = async () => {
   await loadLogs()
 }
 
+/* ================= CLOSE MODAL ================= */
 const closeModal = () => {
   showModal.value = false
 }
 
-/* INIT */
+/* ================= INIT ================= */
 onMounted(async () => {
   await loadModule()
   await loadLogs()

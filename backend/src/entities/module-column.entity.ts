@@ -12,6 +12,8 @@ export class ModuleColumn {
   @Column()
   type!: string
 
-  @ManyToOne(() => Module, module => module.columns, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Module, module => module.columns, {
+    onDelete: 'CASCADE'
+  })
   module!: Module
 }

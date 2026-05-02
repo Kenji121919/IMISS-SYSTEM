@@ -76,21 +76,21 @@ const router = createRouter({
 ========================= */
 router.beforeEach((to) => {
   const token = localStorage.getItem('token')
+  const switching = localStorage.getItem('switchingProfile')
 
-  const isLoggedIn =
-    !!token &&
-    token !== 'null' &&
-    token !== 'undefined'
+  const isLoggedIn = !!token && token !== 'null'
 
-  if (to.meta.requiresAuth && !isLoggedIn) {
-    return { name: 'login' }
-  }
-
-  if (to.name === 'register') {
+  // allow profile page ALWAYS (even during switch)
+  if (to.name === 'profiles') {
+    localStorage.removeItem('switchingProfile')
     return true
   }
 
-  if (to.name === 'login' && isLoggedIn) {
+  if (!isLoggedIn && to.name !== 'login') {
+    return { name: 'login' }
+  }
+
+  if (isLoggedIn && !localStorage.getItem('activeProfile') && !switching) {
     return { name: 'profiles' }
   }
 

@@ -1,17 +1,30 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm'
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne
+} from 'typeorm'
+
 import { Log } from './log.entity'
+import { ModuleColumn } from './module-column.entity'
 
 @Entity()
 export class LogValue {
   @PrimaryGeneratedColumn()
   id!: number
 
-  @Column()
-  column!: string
+  // ✅ FIX: real relation instead of string
+  @ManyToOne(() => ModuleColumn, {
+    eager: true,
+    onDelete: 'CASCADE'
+  })
+  column!: ModuleColumn
 
-  @Column()
+  @Column('text')
   value!: string
 
-  @ManyToOne(() => Log, log => log.values, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Log, log => log.values, {
+    onDelete: 'CASCADE'
+  })
   log!: Log
 }
