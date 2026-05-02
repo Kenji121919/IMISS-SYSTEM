@@ -6,74 +6,27 @@
       <h2 v-if="!collapsed" class="logo">IMISS</h2>
 
       <button class="toggle" @click="$emit('toggle')">
-      <Menu />
+        <Menu />
       </button>
     </div>
 
     <!-- MENU -->
     <ul class="menu">
 
-      <li>
-        <router-link to="/dashboard/monitoring" class="link" active-class="active">
-          <Activity class="icon" />
-          <span v-if="!collapsed">Monitoring</span>
+      <li v-for="item in menuItems" :key="item.id">
+        <router-link
+          :to="item.path"
+          class="link"
+          active-class="active"
+        >
+          <component :is="item.icon" class="icon" v-if="item.icon" />
+          <span v-if="!collapsed">{{ item.name }}</span>
         </router-link>
       </li>
 
-      <li>
-        <router-link to="/dashboard/daily-logs" class="link" active-class="active">
-          <ClipboardList class="icon" />
-          <span v-if="!collapsed">Daily Logs</span>
-        </router-link>
-      </li>
-
-      <li>
-        <router-link to="/dashboard/troubleshooting" class="link" active-class="active">
-          <Wrench class="icon" />
-          <span v-if="!collapsed">Troubleshooting</span>
-        </router-link>
-      </li>
-
-      <li>
-        <router-link to="/dashboard/cable" class="link" active-class="active">
-          <Cable class="icon" />
-          <span v-if="!collapsed">Cable</span>
-        </router-link>
-      </li>
-
-      <li>
-        <router-link to="/dashboard/kiosk" class="link" active-class="active">
-          <Monitor class="icon" />
-          <span v-if="!collapsed">Kiosk</span>
-        </router-link>
-      </li>
-
-      <li>
-        <router-link to="/dashboard/routers" class="link" active-class="active">
-          <Wifi class="icon" />
-          <span v-if="!collapsed">Routers</span>
-        </router-link>
-      </li>
-
-      <li>
-        <router-link to="/dashboard/referral" class="link" active-class="active">
-          <Link class="icon" />
-          <span v-if="!collapsed">Referral</span>
-        </router-link>
-      </li>
-
-      <li>
-        <router-link to="/dashboard/pullout" class="link" active-class="active">
-          <Upload class="icon" />
-          <span v-if="!collapsed">Pullout</span>
-        </router-link>
-      </li>
-
-      <li>
-        <router-link to="/dashboard/change-pin" class="link" active-class="active">
-          <Lock class="icon" />
-          <span v-if="!collapsed">Change PIN</span>
-        </router-link>
+      <!-- EMPTY STATE -->
+      <li v-if="menuItems.length === 0" class="empty">
+        <span v-if="!collapsed">No modules yet</span>
       </li>
 
     </ul>
@@ -90,25 +43,91 @@
 </template>
 
 <script setup>
-import {
-  Activity,
-  ClipboardList,
-  Wrench,
-  Cable,
-  Monitor,
-  Wifi,
-  Link,
-  Upload,
-  Lock,
-  LogOut,
-  Menu
+import { ref, onMounted } from 'vue'
+import api from '@/api/axios'
 
+import {
+  Menu,
+  LogOut,
+  User,
+  Settings,
+  LayoutGrid
 } from 'lucide-vue-next'
 
 defineProps({
   collapsed: Boolean
 })
 
+const menuItems = ref([])
+
+/* =========================
+   LOAD SIDEBAR MENU (FIXED)
+========================= */
+onMounted(async () => {
+  try {
+    const activeProfile = JSON.parse(localStorage.getItem('activeProfile'))
+    const user = JSON.parse(localStorage.getItem('user'))
+
+    if (!activeProfile || !user) return
+
+    const isAdmin = activeProfile.team?.toLowerCase() === 'admin'
+
+    // ✅ FIX: load ALL modules (NOT user.id)
+    const res = await api.get('/modules')
+
+    const modules = res.data || []
+
+    console.log('Modules loaded:', modules)
+
+    if (isAdmin) {
+      menuItems.value = [
+        {
+          id: 'admin-1',
+          name: 'Manage Profiles',
+          path: '/dashboard/manage-profiles',
+          icon: User
+        },
+        {
+          id: 'admin-2',
+          name: 'Manage Modules',
+          path: '/dashboard/manage-modules',
+          icon: Settings
+        },
+
+        ...modules.map(mod => ({
+          id: mod.id,
+          name: mod.name,
+          path: `/dashboard/module/${mod.id}`,
+          icon: LayoutGrid
+        }))
+      ]
+    } else {
+      menuItems.value = modules
+        .filter(mod => {
+          try {
+            const allowed = JSON.parse(mod.allowedProfiles || '[]')
+            return allowed.includes(activeProfile.id)
+          } catch {
+            return false
+          }
+        })
+        .map(mod => ({
+          id: mod.id,
+          name: mod.name,
+          path: `/dashboard/module/${mod.id}`,
+          icon: LayoutGrid
+        }))
+    }
+
+  } catch (err) {
+    console.error('Sidebar load error:', err)
+    menuItems.value = [] // prevent UI crash
+  }
+})
+
+/* =========================
+   LOGOUT
+========================= */
 const logout = () => {
   localStorage.clear()
   window.location.href = '/'
@@ -158,32 +177,13 @@ const logout = () => {
   text-decoration: none;
   border-radius: 8px;
   transition: 0.3s;
-  position: relative;
 }
 
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px;
-  color: white;
-  background-color: black;
-  text-decoration: none;
-  border-radius: 8px;
-  transition: 0.3s;
-  position: relative;
-}
-.toggle:hover {
-  background: #222;
-  transform: translateX(3px);
-}
-/* HOVER ANIMATION */
 .link:hover {
   background: #222;
   transform: translateX(3px);
 }
 
-/* ACTIVE GLOW */
 .link.active {
   background: #1e90ff;
   box-shadow: 0 0 12px #1e90ff;
@@ -195,22 +195,32 @@ const logout = () => {
   height: 22px;
 }
 
-/* COLLAPSED CENTER */
+/* COLLAPSED */
 .sidebar.collapsed .link {
   justify-content: center;
 }
 
+/* EMPTY STATE */
+.empty {
+  color: #888;
+  padding: 10px;
+  text-align: center;
+}
 
-/* TOOLTIP WHEN COLLAPSED */
-.sidebar.collapsed .link:hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: 80px;
+/* TOGGLE BUTTON */
+.toggle {
+  display: flex;
+  align-items: center;
+  padding: 8px;
   background: black;
-  padding: 5px 10px;
+  border: none;
+  color: white;
   border-radius: 6px;
-  white-space: nowrap;
-  font-size: 12px;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: #222;
 }
 
 /* LOGOUT */

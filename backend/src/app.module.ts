@@ -1,11 +1,17 @@
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { ProfilesModule } from './profiles/profiles.module';
-import { User } from './entities/user.entity';
-import { Profile } from './entities/profile.entity';
-import { DailyLog } from './entities/daily-log.entity';
-import { AuthModule } from './auth/auth.module'; 
-import { DailyLogModule } from './daily-log/daily-log.module'
+import { Module } from '@nestjs/common'
+import { TypeOrmModule } from '@nestjs/typeorm'
+
+import { User } from './entities/user.entity'
+import { Profile } from './entities/profile.entity'
+import { Module as ModuleEntity } from './entities/module.entity'
+import { Log } from './entities/log.entity'
+
+import { AuthModule } from './auth/auth.module'
+import { ProfilesModule } from './profiles/profiles.module'
+import { ModulesModule } from './module/modules.module'
+import { LogsModule } from './logs/logs.module'
+import { LogValue } from './entities/log-value.entity'
+import { ModuleColumn } from './entities/module-column.entity'
 
 @Module({
   imports: [
@@ -16,14 +22,14 @@ import { DailyLogModule } from './daily-log/daily-log.module'
       username: 'root',
       password: '1234',
       database: 'imisslogs_db',
-      entities: [User, Profile, DailyLog],
+      entities: [User, Profile, ModuleEntity, Log, LogValue, ModuleColumn],
       synchronize: true,
-      
     }),
 
-    AuthModule, 
+    AuthModule,
     ProfilesModule,
-    DailyLogModule,
+    ModulesModule,
+    LogsModule,
   ],
 })
 export class AppModule {}

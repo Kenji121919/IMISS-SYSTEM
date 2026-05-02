@@ -4,6 +4,9 @@ import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import ProfilesView from '../views/ProfilesView.vue'
 
+// Dashboard Layout
+import DashboardLayout from '../views/dashboard/Dashboard.vue'
+
 const routes = [
   {
     path: '/',
@@ -21,6 +24,46 @@ const routes = [
     component: ProfilesView,
     meta: { requiresAuth: true },
   },
+
+  /* =========================
+     DASHBOARD (DYNAMIC SYSTEM)
+  ========================= */
+  {
+    path: '/dashboard',
+    component: DashboardLayout,
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: '',
+        name: 'dashboard-home',
+        component: () => import('@/views/dashboard/Home.vue')
+      },
+      {
+        path: 'manage-profiles',
+        name: 'manage-profiles',
+        component: () => import('@/views/admin/ManageProfiles.vue')
+      },
+      {
+        path: 'manage-modules',
+        name: 'manage-modules',
+        component: () => import('@/views/admin/ManageModules.vue')
+      },
+      {
+        path: 'module/:id',
+        name: 'dynamic-module',
+        component: () => import('@/views/modules/DynamicModule.vue'),
+        props: true
+      }
+    ]
+  },
+
+  /* =========================
+     FALLBACK (OPTIONAL BUT GOOD)
+  ========================= */
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/'
+  }
 ]
 
 const router = createRouter({
@@ -28,7 +71,9 @@ const router = createRouter({
   routes,
 })
 
-/* 🔥 AUTH GUARD (CLEAN VERSION) */
+/* =========================
+   AUTH GUARD
+========================= */
 router.beforeEach((to) => {
   const token = localStorage.getItem('token')
 
@@ -37,21 +82,19 @@ router.beforeEach((to) => {
     token !== 'null' &&
     token !== 'undefined'
 
-  // protect private routes
   if (to.meta.requiresAuth && !isLoggedIn) {
     return { name: 'login' }
   }
 
-  // allow register ALWAYS
   if (to.name === 'register') {
     return true
   }
 
-  // block login only if already logged in
   if (to.name === 'login' && isLoggedIn) {
     return { name: 'profiles' }
   }
 
   return true
 })
+
 export default router

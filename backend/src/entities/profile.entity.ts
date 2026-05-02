@@ -15,6 +15,6 @@ export class Profile {
   @Column({ nullable: true })
   pin!: string;
 
-  @ManyToOne(() => User, user => user.profiles)
-  user!: User;
+@ManyToOne(() => User, user => user.profiles, { eager: false })
+user!: User;
 }

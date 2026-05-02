@@ -229,7 +229,8 @@ const logout = () => {
 /* GRID */
 .profile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 200px));
+  justify-content: center; /* centers items */
   gap: 20px;
   width: 100%;
   max-width: 600px;
