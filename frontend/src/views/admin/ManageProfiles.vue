@@ -281,7 +281,9 @@ const confirmDelete = async () => {
   margin-top: 10px;
 }
 
-input {
+/* INPUTS + SELECT (UPDATED) */
+input,
+select {
   padding: 11px 12px;
   border: 1px solid #ddd;
   border-radius: 10px;
@@ -289,11 +291,19 @@ input {
   transition: 0.2s;
   min-width: 180px;
   font-size: 14px;
+  background: white;
 }
 
-input:focus {
+/* FOCUS STATE */
+input:focus,
+select:focus {
   border-color: #1e90ff;
   box-shadow: 0 0 0 3px rgba(30,144,255,0.15);
+}
+
+/* SELECT SPECIAL LOOK */
+select {
+  cursor: pointer;
 }
 
 /* BUTTONS */
@@ -377,7 +387,7 @@ tr:hover {
   align-items: center;
 }
 
-/* MINI BUTTON (SHOW PIN) */
+/* MINI BUTTON */
 .mini-btn {
   margin-left: 8px;
   font-size: 11px;
@@ -422,7 +432,31 @@ tr:hover {
   display: flex;
   gap: 10px;
   margin-top: 15px;
-  
+}
+
+/* STATUS BADGES (NEW — VERY IMPORTANT FOR HOSPITAL SYSTEM) */
+.status {
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+/* Status colors */
+.status.pending {
+  background: #fff4d6;
+  color: #b26a00;
+}
+
+.status.queue {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status.done {
+  background: #dcfce7;
+  color: #166534;
 }
 
 /* RESPONSIVE */
@@ -435,7 +469,8 @@ tr:hover {
     flex-direction: column;
   }
 
-  input {
+  input,
+  select {
     width: 100%;
   }
 

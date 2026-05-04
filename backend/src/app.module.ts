@@ -10,7 +10,6 @@ import { AuthModule } from './auth/auth.module'
 import { ProfilesModule } from './profiles/profiles.module'
 import { ModulesModule } from './module/modules.module'
 import { LogsModule } from './logs/logs.module'
-import { LogValue } from './entities/log-value.entity'
 import { ModuleColumn } from './entities/module-column.entity'
 
 @Module({
@@ -22,7 +21,7 @@ import { ModuleColumn } from './entities/module-column.entity'
       username: 'root',
       password: '1234',
       database: 'imisslogs_db',
-      entities: [User, Profile, ModuleEntity, Log, LogValue, ModuleColumn],
+      entities: [User, Profile, ModuleEntity, Log,  ModuleColumn],
       synchronize: true,
     }),
 

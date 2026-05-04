@@ -16,7 +16,7 @@
 
         <input v-model="moduleName" placeholder="Module Name" />
 
-        <!-- COLUMN BUILDER -->
+        <!-- COLUMNS -->
         <div class="columns">
           <h4>Columns</h4>
 
@@ -25,16 +25,34 @@
             :key="i"
             class="column-row"
           >
-            <input v-model="col.name" placeholder="Column name" />
 
+            <!-- COLUMN NAME -->
+            <input
+              v-model="col.name"
+              placeholder="Column name"
+            />
+
+            <!-- TYPE -->
             <select v-model="col.type">
-              <option value="varchar">varchar</option>
-              <option value="int">int</option>
-              <option value="date">date</option>
-              <option value="time">time</option>
+              <option value="varchar">Text</option>
+              <option value="int">Number</option>
+              <option value="date">Date</option>
+              <option value="time">Time</option>
+              <option value="select">Dropdown</option>
             </select>
 
-            <button class="btn-danger" @click="removeColumn(i)">x</button>
+            <!-- DROPDOWN OPTIONS -->
+            <input
+              v-if="col.type === 'select'"
+              v-model="col.optionsInput"
+              placeholder="Pending,Queue,Done"
+            />
+
+            <!-- REMOVE -->
+            <button class="btn-red" @click="removeColumn(i)">
+              x
+            </button>
+
           </div>
 
           <button class="btn-blue small" @click="addColumn">
@@ -60,6 +78,7 @@
           </label>
         </div>
 
+        <!-- CREATE BUTTON -->
         <button class="btn-green full" @click="createModule">
           Create Module
         </button>
@@ -90,7 +109,10 @@
           </div>
 
           <div class="actions">
-            <button class="btn-blue" @click="openEdit(m)">Edit</button>
+            <button class="btn-blue" @click="openEdit(m)">
+              Edit
+            </button>
+
             <button class="btn-red" @click="deleteModule(m.id)">
               Delete
             </button>
@@ -223,6 +245,9 @@ const updateModule = async () => {
   showModal.value = false
   loadModules()
 }
+
+
+
 </script>
 
 <style scoped>

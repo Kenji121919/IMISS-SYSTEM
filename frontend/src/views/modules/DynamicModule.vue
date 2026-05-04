@@ -59,13 +59,31 @@
 
             <label>{{ col.name }}</label>
 
-            <input
+            <!--  DROPDOWN -->
+            <select
+              v-if="col.type === 'select'"
               v-model="form[col.name]"
-              :type="inputType(col.type)"
-            />
+            >
+              <option disabled value="">Select</option>
 
-          </div>
-        </div>
+              <option
+                v-for="opt in col.options"
+                :key="opt"
+                :value="opt"
+              >
+                {{ opt }}
+              </option>
+            </select>
+
+    <!--  OTHER INPUTS -->
+    <input
+      v-else
+      v-model="form[col.name]"
+      :type="inputType(col.type)"
+    />
+
+  </div>
+</div>
 
         <div class="modal-footer">
           <button class="btn-save" @click="saveLog">Save</button>
@@ -96,7 +114,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/api/axios'
 
@@ -157,8 +175,13 @@ const normalizeLog = (log) => {
 /* ================= LOAD LOGS ================= */
 const loadLogs = async () => {
   const res = await api.get(`/logs/module/${route.params.id}`)
-
   logs.value = res.data.map(normalizeLog)
+}
+
+/* ================= MASTER LOADER ================= */
+const loadAll = async () => {
+  await loadModule()
+  await loadLogs()
 }
 
 /* ================= GET VALUE ================= */
@@ -234,7 +257,210 @@ const closeModal = () => {
 
 /* ================= INIT ================= */
 onMounted(async () => {
-  await loadModule()
-  await loadLogs()
+  await loadAll()
 })
+
+/* ================= AUTO REFRESH ON MODULE SWITCH ================= */
+watch(
+  () => route.params.id,
+  async (newId, oldId) => {
+    if (newId && newId !== oldId) {
+      await loadAll()
+    }
+  }
+)
 </script>
+
+<style>
+.container {
+  padding: 20px;
+  background: #f4f6f9;
+  min-height: 100vh;
+  font-family: Arial, sans-serif;
+}
+
+/* ================= HEADER ================= */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.header h1 {
+  font-size: 22px;
+  color: #222;
+}
+
+.add-btn {
+  background: #1e90ff;
+  color: white;
+  border: none;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.add-btn:hover {
+  background: #187bcd;
+}
+
+/* ================= TABLE ================= */
+.table-wrapper {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table thead {
+  background: #1e1e2f;
+  color: white;
+}
+
+.table th,
+.table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+}
+
+.table tbody tr:hover {
+  background: #f8f9fb;
+}
+
+/* ACTIONS */
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-btn {
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.icon-btn.edit {
+  background: #1e90ff;
+  color: white;
+}
+
+.icon-btn.delete {
+  background: #ff4d4d;
+  color: white;
+}
+
+/* ================= MODAL ================= */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+}
+
+.modal-card {
+  background: white;
+  width: 450px;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+/* MODAL HEADER */
+.modal-header {
+  margin-bottom: 15px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+/* MODAL BODY */
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-body label {
+  font-size: 13px;
+  color: #555;
+  margin-bottom: 4px;
+  display: block;
+}
+
+/* INPUTS */
+.modal-body input,
+.modal-body select {
+  width: 90%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  outline: none;
+  transition: 0.2s;
+  justify-content: center;
+}
+
+.modal-body input:focus,
+.modal-body select:focus {
+  border-color: #1e90ff;
+  box-shadow: 0 0 5px rgba(30,144,255,0.3);
+}
+
+/* MODAL FOOTER */
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* BUTTONS */
+.btn-save {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn-cancel {
+  background: #aaa;
+  color: white;
+  border: none;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn-danger {
+  background: #ff4d4d;
+  color: white;
+  border: none;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* ================= EMPTY STATE ================= */
+p {
+  color: #777;
+  text-align: center;
+  margin-top: 20px;
+}
+</style>

@@ -67,16 +67,23 @@ defineProps({
 const menuItems = ref([])
 
 /* =========================
-   LOAD SIDEBAR MENU
+   LOAD SIDEBAR MENU (FIXED)
 ========================= */
 onMounted(async () => {
   try {
     const activeProfile = JSON.parse(localStorage.getItem('activeProfile'))
     const user = JSON.parse(localStorage.getItem('user'))
 
+    console.log('ACTIVE PROFILE:', activeProfile)
+
     if (!activeProfile || !user) return
 
-    const isAdmin = activeProfile.team?.toLowerCase() === 'admin'
+   
+    const isAdmin =
+      activeProfile.team?.toLowerCase?.() === 'admin' ||
+      activeProfile.name?.toLowerCase?.() === 'admin'
+
+    console.log('isAdmin:', isAdmin)
 
     const res = await api.get(`/modules/${user.id}`)
     const modules = res.data || []
@@ -131,11 +138,10 @@ onMounted(async () => {
 })
 
 /* =========================
-   SWITCH PROFILE (FIXED)
+   BACK TO PROFILE 
 ========================= */
-const switchProfile = () => {
+const backToProfile = () => {
   localStorage.removeItem('activeProfile')
-  localStorage.setItem('switchingProfile', '1')
 
   window.location.href = '/profiles'
 }
