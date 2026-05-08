@@ -17,9 +17,6 @@ export class Log {
   @ManyToOne(() => Module, module => module.logs, { onDelete: 'CASCADE' })
   module!: Module
 
-  /* =========================
-     IMPORTANT FIELDS (INDEXED)
-  ========================= */
   @Index()
   @Column({ nullable: true })
   date!: string
@@ -32,9 +29,6 @@ export class Log {
   @Column({ nullable: true })
   concern!: string
 
-  /* =========================
-     FLEXIBLE DATA
-  ========================= */
   @Column('json')
   data!: Record<string, any>
 
