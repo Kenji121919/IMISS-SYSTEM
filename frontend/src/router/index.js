@@ -74,22 +74,28 @@ const router = createRouter({
 /* =========================
    AUTH GUARD
 ========================= */
+
+// Add any future public routes here
+const publicRoutes = ['login', 'register']
+
 router.beforeEach((to) => {
   const token = localStorage.getItem('token')
   const switching = localStorage.getItem('switchingProfile')
 
   const isLoggedIn = !!token && token !== 'null'
 
-  // allow profile page ALWAYS (even during switch)
+  // Allow profile page always (even during switch)
   if (to.name === 'profiles') {
     localStorage.removeItem('switchingProfile')
     return true
   }
 
-  if (!isLoggedIn && to.name !== 'login') {
+  // Allow public routes without auth
+  if (!isLoggedIn && !publicRoutes.includes(to.name)) {
     return { name: 'login' }
   }
 
+  // If logged in but no active profile selected, go to profiles
   if (isLoggedIn && !localStorage.getItem('activeProfile') && !switching) {
     return { name: 'profiles' }
   }

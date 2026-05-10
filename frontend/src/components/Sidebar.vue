@@ -1,46 +1,85 @@
 <template>
   <div class="sidebar" :class="{ collapsed }">
 
-    <!-- TOP -->
-    <div class="top">
-      <h2 v-if="!collapsed" class="logo">IMISS</h2>
-
-      <button class="toggle" @click="$emit('toggle')">
-        <Menu />
+    <!-- ===== TOP / LOGO ===== -->
+    <div class="sidebar-top">
+      <div class="logo-wrap">
+        
+        <span v-if="!collapsed" class="logo-text">IMISS</span>
+      </div>
+      <button class="toggle-btn" @click="$emit('toggle')" :title="collapsed ? 'Expand' : 'Collapse'">
+        <Menu :size="16" />
       </button>
     </div>
 
-    <!-- MENU -->
-    <ul class="menu">
+    <!-- ===== MENU ===== -->
+    <div class="menu-wrap">
 
-      <li v-for="item in menuItems" :key="item.id">
+      <!-- ADMIN SECTION -->
+      <div v-if="adminItems.length" class="menu-section">
+        <div v-if="!collapsed" class="section-label">Admin</div>
+        <div v-else class="section-divider"></div>
+
         <router-link
+          v-for="item in adminItems"
+          :key="item.id"
           :to="item.path"
-          class="link"
+          class="menu-link"
           active-class="active"
+          :title="collapsed ? item.name : ''"
         >
-          <component :is="item.icon" class="icon" v-if="item.icon" />
-          <span v-if="!collapsed">{{ item.name }}</span>
+          <component :is="item.icon" :size="17" class="menu-icon" />
+          <span v-if="!collapsed" class="menu-label">{{ item.name }}</span>
         </router-link>
-      </li>
+      </div>
+
+      <!-- MODULES SECTION -->
+      <div v-if="moduleItems.length" class="menu-section">
+        <div v-if="!collapsed" class="section-label">Modules</div>
+        <div v-else class="section-divider"></div>
+
+        <router-link
+          v-for="item in moduleItems"
+          :key="item.id"
+          :to="item.path"
+          class="menu-link"
+          active-class="active"
+          :title="collapsed ? item.name : ''"
+        >
+          <component :is="item.icon" :size="17" class="menu-icon" />
+          <span v-if="!collapsed" class="menu-label">{{ item.name }}</span>
+        </router-link>
+      </div>
 
       <!-- EMPTY STATE -->
-      <li v-if="menuItems.length === 0" class="empty">
-        <span v-if="!collapsed">No modules yet</span>
-      </li>
+      <div v-if="!adminItems.length && !moduleItems.length" class="empty-state">
+        <span v-if="!collapsed">No modules available</span>
+        <span v-else>—</span>
+      </div>
 
-    </ul>
-<!-- BACK TO PROFILE -->
-<div class="profile-back">
-  <button @click="backToProfile">
-    <User class="icon" />
-    <span v-if="!collapsed">Back to Profile</span>
-  </button>
-</div>
-    <!-- LOGOUT -->
-    <div class="logout">
-      <button @click="logout">
-        <LogOut class="icon" />
+    </div>
+
+    <!-- ===== BOTTOM ACTIONS ===== -->
+    <div class="sidebar-bottom">
+      <div class="bottom-divider"></div>
+
+      <!-- BACK TO PROFILE -->
+      <button
+        class="bottom-btn secondary"
+        @click="backToProfile"
+        :title="collapsed ? 'Switch profile' : ''"
+      >
+        <User :size="16" class="menu-icon" />
+        <span v-if="!collapsed">Switch profile</span>
+      </button>
+
+      <!-- LOGOUT -->
+      <button
+        class="bottom-btn danger"
+        @click="logout"
+        :title="collapsed ? 'Logout' : ''"
+      >
+        <LogOut :size="16" class="menu-icon" />
         <span v-if="!collapsed">Logout</span>
       </button>
     </div>
@@ -49,236 +88,309 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import api from '@/api/axios'
+import { Menu, LogOut, User, Settings, LayoutGrid } from 'lucide-vue-next'
 
-import {
-  Menu,
-  LogOut,
-  User,
-  Settings,
-  LayoutGrid
-} from 'lucide-vue-next'
-
-defineProps({
-  collapsed: Boolean
-})
+defineProps({ collapsed: Boolean })
+defineEmits(['toggle'])
 
 const menuItems = ref([])
 
-/* =========================
-   LOAD SIDEBAR MENU (FIXED)
-========================= */
+/* ===== SPLIT ITEMS ===== */
+const adminItems = computed(() => menuItems.value.filter(i => i.isAdmin))
+const moduleItems = computed(() => menuItems.value.filter(i => !i.isAdmin))
+
+/* ===== LOAD ===== */
 onMounted(async () => {
   try {
     const activeProfile = JSON.parse(localStorage.getItem('activeProfile'))
     const user = JSON.parse(localStorage.getItem('user'))
-
-    console.log('ACTIVE PROFILE:', activeProfile)
-
     if (!activeProfile || !user) return
 
-   
     const isAdmin =
       activeProfile.team?.toLowerCase?.() === 'admin' ||
       activeProfile.name?.toLowerCase?.() === 'admin'
-
-    console.log('isAdmin:', isAdmin)
 
     const res = await api.get(`/modules/${user.id}`)
     const modules = res.data || []
 
     if (isAdmin) {
       menuItems.value = [
-        {
-          id: 'admin-1',
-          name: 'Manage Profiles',
-          path: '/dashboard/manage-profiles',
-          icon: User
-        },
-        {
-          id: 'admin-2',
-          name: 'Manage Modules',
-          path: '/dashboard/manage-modules',
-          icon: Settings
-        },
+        { id: 'admin-1', name: 'Manage Profiles', path: '/dashboard/manage-profiles', icon: User, isAdmin: true },
+        { id: 'admin-2', name: 'Manage Modules',  path: '/dashboard/manage-modules',  icon: Settings, isAdmin: true },
         ...modules.map(mod => ({
           id: mod.id,
           name: mod.name,
           path: `/dashboard/module/${mod.id}`,
-          icon: LayoutGrid
+          icon: LayoutGrid,
+          isAdmin: false
         }))
       ]
     } else {
       menuItems.value = modules
         .filter(mod => {
           try {
-            const allowed =
-              typeof mod.allowedProfiles === 'string'
-                ? JSON.parse(mod.allowedProfiles)
-                : mod.allowedProfiles || []
-
+            const allowed = typeof mod.allowedProfiles === 'string'
+              ? JSON.parse(mod.allowedProfiles)
+              : mod.allowedProfiles || []
             return allowed.includes(activeProfile.id)
-          } catch {
-            return false
-          }
+          } catch { return false }
         })
         .map(mod => ({
           id: mod.id,
           name: mod.name,
           path: `/dashboard/module/${mod.id}`,
-          icon: LayoutGrid
+          icon: LayoutGrid,
+          isAdmin: false
         }))
     }
-
   } catch (err) {
     console.error('Sidebar load error:', err)
     menuItems.value = []
   }
 })
 
-/* =========================
-   BACK TO PROFILE 
-========================= */
+/* ===== ACTIONS ===== */
 const backToProfile = () => {
   localStorage.removeItem('activeProfile')
-
   window.location.href = '/profiles'
 }
 
-/* =========================
-   LOGOUT
-========================= */
 const logout = () => {
   localStorage.clear()
   window.location.href = '/'
 }
 </script>
 
-<style>
-
-.profile-back {
-  padding: 10px;
-}
-
-.profile-back button {
-  width: 100%;
-  background: #444;
-  border: none;
-  color: white;
-  padding: 10px;
-  cursor: pointer;
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  border-radius: 8px;
-}
-
-.profile-back button:hover {
-  background: #555;
-}
-/* SIDEBAR */
+<style scoped>
+/* ===== SIDEBAR ===== */
 .sidebar {
   width: 240px;
   height: 100vh;
-  background: #111;
+  background: #111827;
   color: white;
   display: flex;
   flex-direction: column;
-  transition: 0.3s ease;
+  transition: width 0.25s ease;
   overflow: hidden;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(255,255,255,0.06);
 }
 
 .sidebar.collapsed {
-  width: 70px;
+  width: 64px;
 }
 
-/* TOP */
-.top {
+/* ===== TOP ===== */
+.sidebar-top {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  padding: 12px;
+  padding: 14px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  min-height: 56px;
+  flex-shrink: 0;
 }
 
-/* MENU */
-.menu {
-  flex: 1;
-  list-style: none;
-  padding: 15px;
-  margin: 0;
-}
-
-/* LINK */
-.link {
+.logo-wrap {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
-  color: white;
-  text-decoration: none;
+  gap: 9px;
+  overflow: hidden;
+}
+
+.logo-mark {
+  width: 30px;
+  height: 30px;
+  background: #3b82f6;
   border-radius: 8px;
-  transition: 0.3s;
-}
-
-.link:hover {
-  background: #222;
-  transform: translateX(3px);
-}
-
-.link.active {
-  background: #1e90ff;
-  box-shadow: 0 0 12px #1e90ff;
-}
-
-/* ICON */
-.icon {
-  width: 22px;
-  height: 22px;
-}
-
-/* COLLAPSED */
-.sidebar.collapsed .link {
-  justify-content: center;
-}
-
-/* EMPTY STATE */
-.empty {
-  color: #888;
-  padding: 10px;
-  text-align: center;
-}
-
-/* TOGGLE BUTTON */
-.toggle {
   display: flex;
   align-items: center;
-  padding: 8px;
-  background: black;
-  border: none;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
   color: white;
-  border-radius: 6px;
-  cursor: pointer;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+  font-family: Inter, Arial, sans-serif;
 }
 
-.toggle:hover {
-  background: #222;
-}
-
-/* LOGOUT */
-.logout {
-  padding: 10px;
-}
-
-.logout button {
-  width: 100%;
-  background: red;
-  border: none;
+.logo-text {
+  font-size: 15px;
+  font-weight: 700;
   color: white;
-  padding: 10px;
+  letter-spacing: 1px;
+  font-family: Inter, Arial, sans-serif;
+  white-space: nowrap;
+}
+
+.toggle-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: rgba(255,255,255,0.06);
+  color: #9ca3af;
+  border-radius: 7px;
   cursor: pointer;
   display: flex;
-  gap: 10px;
+  align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.toggle-btn:hover {
+  background: rgba(255,255,255,0.12);
+  color: white;
+}
+
+/* ===== MENU ===== */
+.menu-wrap {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+.menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 6px 8px 4px;
+  white-space: nowrap;
+  font-family: Inter, Arial, sans-serif;
+}
+
+.section-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin: 6px 4px;
+}
+
+/* ===== LINKS ===== */
+.menu-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: rgba(255,255,255,0.6);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: Inter, Arial, sans-serif;
+  transition: all 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.menu-link:hover {
+  background: rgba(255,255,255,0.07);
+  color: white;
+}
+
+.menu-link.active {
+  background: rgba(59,130,246,0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59,130,246,0.2);
+}
+
+.menu-link.active .menu-icon {
+  color: #3b82f6;
+}
+
+.sidebar.collapsed .menu-link {
+  justify-content: center;
+  padding: 9px;
+}
+
+.menu-icon {
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+  font-size: 12px;
+  color: rgba(255,255,255,0.25);
+  text-align: center;
+  padding: 16px 8px;
+  font-family: Inter, Arial, sans-serif;
+}
+
+/* ===== BOTTOM ===== */
+.sidebar-bottom {
+  flex-shrink: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bottom-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin-bottom: 6px;
+}
+
+.bottom-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: Inter, Arial, sans-serif;
+  transition: all 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sidebar.collapsed .bottom-btn {
+  justify-content: center;
+  padding: 9px;
+}
+
+/* Secondary (Switch Profile) */
+.bottom-btn.secondary {
+  background: transparent;
+  color: rgba(255,255,255,0.5);
+}
+.bottom-btn.secondary:hover {
+  background: rgba(255,255,255,0.07);
+  color: white;
+}
+
+/* Danger (Logout) */
+.bottom-btn.danger {
+  background: transparent;
+  color: rgba(239,68,68,0.7);
+}
+.bottom-btn.danger:hover {
+  background: rgba(239,68,68,0.1);
+  color: #ef4444;
 }
 </style>

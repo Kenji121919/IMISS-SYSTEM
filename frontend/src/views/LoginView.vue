@@ -66,11 +66,10 @@
       </button>
 
       <!-- REGISTER -->
+      <!-- REGISTER -->
       <p class="register">
-        Don’t have an account?
-        <router-link to="/register" class="link2">
-        Register
-        </router-link>
+        Don't have an account?
+        <router-link to="/register" class="register-link">Register</router-link>
       </p>
 
     </div>
@@ -177,10 +176,7 @@ const loginWithGoogle = () => {
 /* =========================
    REGISTER (FIXED)
 ========================= */
-const goRegister = () => {
-  console.log('REGISTER CLICKED')
-  router.push('/register')
-}
+
 </script>
 
 <style scoped>
@@ -280,7 +276,7 @@ input {
   cursor: pointer;
 }
 
-.register-link2 {
+.register-link {
   color: #1e90ff;
   cursor: pointer;
   font-weight: bold;

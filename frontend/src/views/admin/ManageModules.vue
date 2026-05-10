@@ -1,112 +1,208 @@
 <template>
   <div class="page">
 
-    <!-- ================= HEADER ================= -->
-    <div class="header">
-      <h1>Manage Modules</h1>
-      <p>Create dynamic modules with columns and access control</p>
+    <!-- ================= TOAST ================= -->
+    <transition name="toast-slide">
+      <div v-if="toast.show" :class="['toast', toast.type]">
+        <span class="toast-icon">{{ toast.type === 'success' ? '✓' : '✕' }}</span>
+        {{ toast.message }}
+      </div>
+    </transition>
+
+    <!-- ================= TOPBAR ================= -->
+    <div class="topbar">
+      <div>
+        <h1>Manage modules</h1>
+        <p>Build dynamic data entry forms with custom columns</p>
+      </div>
+      <div>
+        <button class="btn-primary" @click="openCreate" style="width:fit-content !important">
+          <span class="btn-icon-left">+</span> New module
+        </button>
+      </div>
     </div>
 
-    <!-- ================= CREATE MODULE ================= -->
-    <div class="card">
-      <h3>Create Module</h3>
+    <!-- ================= TWO COLUMN LAYOUT ================= -->
+    <div class="two-col">
 
-      <div class="form">
+      <!-- ===== LEFT: MODULE LIST ===== -->
+      <div class="panel">
+        <div class="panel-label">Your modules</div>
+
+        <div v-if="modules.length" class="module-list">
+          <div
+            v-for="m in modules"
+            :key="m.id"
+            :class="['module-item', { active: activeModule?.id === m.id }]"
+            @click="openEdit(m)"
+          >
+            <div class="module-info">
+              <div class="module-name">{{ m.name }}</div>
+              <div class="module-meta">
+                {{ m.columns?.length || 0 }} columns · {{ m.allowedProfiles?.length || 0 }} profiles
+              </div>
+            </div>
+            <div class="item-actions" @click.stop>
+              <button class="btn-icon-action edit" @click="openEdit(m)" title="Edit">✏</button>
+              <button class="btn-icon-action danger" @click="askDelete(m)" title="Delete">🗑</button>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="empty-state">
+          <p>No modules yet.</p>
+          <p>Click <strong>New module</strong> to get started.</p>
+        </div>
+      </div>
+
+      <!-- ===== RIGHT: EDITOR PANEL ===== -->
+      <div class="panel editor-panel" v-if="editorMode">
+
+        <div class="editor-header">
+          <div>
+            <div class="panel-label">
+              {{ editorMode === 'create' ? 'New module' : 'Edit module' }}
+            </div>
+            <div v-if="editorMode === 'edit'" class="active-badge">
+              {{ editModule.name }}
+            </div>
+          </div>
+          <button class="btn-ghost-sm" @click="closeEditor">✕</button>
+        </div>
 
         <!-- MODULE NAME -->
-        <input v-model="moduleName" placeholder="Module Name" />
+        <div class="form-group">
+          <label class="form-label">Module name</label>
+          <input
+            v-model="editModule.name"
+            class="form-input"
+            placeholder="e.g. Daily Attendance"
+          />
+        </div>
 
-        <!-- ================= COLUMNS ================= -->
-        <div class="columns">
-          <h4>Columns</h4>
+        <!-- COLUMNS -->
+        <div class="section">
+          <div class="section-label">Columns</div>
 
-          <div
-            v-for="(col, i) in columns"
-            :key="i"
-            class="column-row"
+          <draggable
+            v-model="editModule.columns"
+            item-key="uid"
+            animation="200"
+            ghost-class="ghost"
+            handle=".drag-handle"
           >
-            <input v-model="col.name" placeholder="Column name" />
+            <template #item="{ element, index }">
+              <div class="col-row">
 
-            <select v-model="col.type">
-              <option value="varchar">Text</option>
-              <option value="int">Number</option>
-              <option value="date">Date</option>
-              <option value="time">Time</option>
-              <option value="select">Dropdown</option>
-            </select>
+                <div class="drag-handle" title="Drag to reorder">⠿</div>
 
-            <input
-              v-if="col.type === 'select'"
-              v-model="col.optionsInput"
-              placeholder="Pending,Queue,Done"
-            />
+                <input
+                  v-model="element.name"
+                  class="col-input"
+                  placeholder="Column name"
+                />
 
-              <label class="filter-check">
-                <input type="checkbox" v-model="col.filterable" />
-                Filter
-              </label>
+                <select v-model="element.type" class="col-select">
+                  <option value="varchar">Text</option>
+                  <option value="int">Number</option>
+                  <option value="date">Date</option>
+                  <option value="time">Time</option>
+                  <option value="select">Dropdown</option>
+                </select>
 
-            <button class="btn-red" @click="removeColumn(i)">x</button>
-          </div>
+                <input
+                  v-if="element.type === 'select'"
+                  v-model="element.optionsInput"
+                  class="col-input"
+                  placeholder="Yes,No,Pending"
+                />
+                <div v-else></div>
 
-          <button class="btn-blue small" @click="addColumn">
-            + Add Column
+                <div class="col-badges">
+                  <span
+                    :class="['badge', element.required ? 'badge-green' : 'badge-off']"
+                    @click="element.required = !element.required"
+                    title="Toggle required"
+                  >Required</span>
+                  <span
+                    :class="['badge', element.filterable ? 'badge-amber' : 'badge-off']"
+                    @click="element.filterable = !element.filterable"
+                    title="Toggle filterable"
+                  >Filter</span>
+                </div>
+
+                <button class="btn-remove" @click="removeEditColumn(index)" title="Remove">✕</button>
+
+              </div>
+            </template>
+          </draggable>
+
+          <button class="btn-add-col" @click="addEditColumn">
+            + Add column
           </button>
         </div>
 
-        <!-- ================= PROFILES ================= -->
-        <div class="profiles">
-          <h4>Allowed Profiles</h4>
-
-          <label v-for="p in profiles" :key="p.id" class="checkbox">
-            <input type="checkbox" :value="p.id" v-model="selectedProfiles" />
-            {{ p.name }}
-          </label>
+        <!-- ALLOWED PROFILES -->
+        <div class="section">
+          <div class="section-label">Allowed profiles</div>
+          <div class="profile-chips">
+            <div
+              v-for="p in profiles"
+              :key="p.id"
+              :class="['chip', { active: editModule.allowedProfiles?.includes(p.id) }]"
+              @click="toggleProfile(p.id)"
+            >
+              <span v-if="editModule.allowedProfiles?.includes(p.id)" class="chip-check">✓</span>
+              {{ p.name }}
+            </div>
+          </div>
         </div>
 
-        <!-- CREATE BUTTON -->
-        <button class="btn-green full" @click="createModule">
-          Create Module
-        </button>
-
-      </div>
-    </div>
-
-    <!-- ================= MODULE LIST ================= -->
-    <div class="card">
-      <h3>Modules</h3>
-
-      <div v-if="modules.length">
-        <div v-for="m in modules" :key="m.id" class="module-card">
-
+        <!-- FOOTER -->
+        <div class="editor-footer">
+          <div><button class="btn-ghost" @click="closeEditor">Cancel</button></div>
           <div>
-            <h4>{{ m.name }}</h4>
-            <small>
-              Columns: {{ m.columns?.length || 0 }} |
-              Profiles: {{ m.allowedProfiles?.length || 0 }}
-            </small>
+            <button
+              class="btn-primary"
+              style="width:fit-content !important"
+              @click="editorMode === 'create' ? createModule() : updateModule()"
+              :disabled="saving"
+            >
+              <span v-if="saving">Saving…</span>
+              <span v-else>{{ editorMode === 'create' ? 'Create module' : 'Save changes' }}</span>
+            </button>
           </div>
+        </div>
 
-          <div class="actions">
-            <button class="btn-blue" @click="openEdit(m)">Edit</button>
-            <button class="btn-red" @click="deleteModule(m.id)">Delete</button>
-          </div>
+      </div>
 
+      <!-- PLACEHOLDER when nothing is selected -->
+      <div class="panel placeholder-panel" v-else>
+        <div class="placeholder-content">
+          <div class="placeholder-icon">☰</div>
+          <p>Select a module to edit,<br>or create a new one.</p>
         </div>
       </div>
 
-      <p v-else class="empty">No modules yet</p>
     </div>
 
-    <!-- ================= EDIT MODAL ================= -->
-    <div v-if="showModal" class="modal-backdrop">
+    <!-- ================= DELETE MODAL ================= -->
+    <div v-if="showDeleteModal" class="modal-backdrop" @click.self="cancelDelete">
       <div class="modal">
 
-        <h3>Edit Module</h3>
-        <input v-model="editModule.name" />
+        <div class="modal-header">
+          <h3>Delete module</h3>
+          <p>This action cannot be undone</p>
+        </div>
 
-        <button class="btn-green" @click="updateModule">Save</button>
-        <button class="btn-red" @click="closeModal">Cancel</button>
+        <div class="modal-body">
+          <p>Are you sure you want to delete <strong>{{ deleteTarget?.name }}</strong>?</p>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn-ghost" @click="cancelDelete">Cancel</button>
+          <button class="btn-danger" @click="confirmDelete">Delete</button>
+        </div>
 
       </div>
     </div>
@@ -116,30 +212,34 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import draggable from 'vuedraggable'
 import api from '@/api/axios'
 
 /* ================= STATE ================= */
-const moduleName = ref('')
-
-const columns = ref([
-  {
-    name: '',
-    type: 'varchar',
-    optionsInput: '',
-    options: [],
-    filterable: false
-  }
-])
-
 const modules = ref([])
 const profiles = ref([])
-const selectedProfiles = ref([])
+const activeModule = ref(null)
+const editorMode = ref(null) // 'create' | 'edit' | null
+const saving = ref(false)
 
-/* ================= EDIT MODAL ================= */
-const showModal = ref(false)
-const editModule = ref({})
+const editModule = ref({
+  name: '',
+  columns: [],
+  allowedProfiles: []
+})
+
+const showDeleteModal = ref(false)
+const deleteTarget = ref(null)
 
 const user = JSON.parse(localStorage.getItem('user'))
+
+/* ================= TOAST ================= */
+const toast = ref({ show: false, message: '', type: 'success' })
+
+const showToast = (message, type = 'success') => {
+  toast.value = { show: true, message, type }
+  setTimeout(() => { toast.value.show = false }, 2500)
+}
 
 /* ================= INIT ================= */
 onMounted(async () => {
@@ -147,19 +247,17 @@ onMounted(async () => {
   await loadProfiles()
 })
 
-/* ================= LOAD DATA ================= */
+/* ================= LOAD ================= */
 const loadModules = async () => {
   try {
     const res = await api.get(`/modules/${user.id}`)
-
     modules.value = res.data.map(m => ({
       ...m,
-      columns: typeof m.columns === 'string'
-        ? JSON.parse(m.columns)
-        : m.columns
+      columns: typeof m.columns === 'string' ? JSON.parse(m.columns) : m.columns
     }))
   } catch (err) {
     console.error(err)
+    showToast('Failed to load modules', 'error')
   }
 }
 
@@ -169,233 +267,582 @@ const loadProfiles = async () => {
     profiles.value = res.data
   } catch (err) {
     console.error(err)
+    showToast('Failed to load profiles', 'error')
   }
 }
 
+/* ================= EDITOR ================= */
+const openCreate = () => {
+  activeModule.value = null
+  editorMode.value = 'create'
+  editModule.value = {
+    name: '',
+    columns: [{
+      uid: Date.now(),
+      name: '',
+      type: 'varchar',
+      optionsInput: '',
+      options: [],
+      filterable: false,
+      required: false
+    }],
+    allowedProfiles: []
+  }
+}
+
+const openEdit = (m) => {
+  activeModule.value = m
+  editorMode.value = 'edit'
+
+  let parsedColumns = m.columns
+  if (typeof parsedColumns === 'string') parsedColumns = JSON.parse(parsedColumns)
+
+  editModule.value = {
+    ...m,
+    columns: Array.isArray(parsedColumns)
+      ? parsedColumns.map(col => ({
+          uid: Date.now() + Math.random(),
+          ...col,
+          optionsInput: Array.isArray(col.options) ? col.options.join(',') : ''
+        }))
+      : [],
+    allowedProfiles: m.allowedProfiles?.map(p => typeof p === 'object' ? p.id : p) || []
+  }
+}
+
+const closeEditor = () => {
+  editorMode.value = null
+  activeModule.value = null
+}
+
 /* ================= COLUMNS ================= */
-const addColumn = () => {
-  columns.value.push({
+const addEditColumn = () => {
+  editModule.value.columns.push({
+    uid: Date.now() + Math.random(),
     name: '',
     type: 'varchar',
     optionsInput: '',
     options: [],
-    filterable: false
+    filterable: false,
+    required: false
   })
 }
 
-const removeColumn = (i) => {
-  columns.value.splice(i, 1)
+const removeEditColumn = (i) => {
+  editModule.value.columns.splice(i, 1)
 }
 
-/* ================= CREATE MODULE ================= */
+/* ================= PROFILES ================= */
+const toggleProfile = (id) => {
+  const list = editModule.value.allowedProfiles
+  const idx = list.indexOf(id)
+  if (idx === -1) list.push(id)
+  else list.splice(idx, 1)
+}
+
+/* ================= FORMAT COLUMNS ================= */
+const formatColumns = (columns) =>
+  columns.map(col => ({
+    name: col.name,
+    type: col.type,
+    filterable: col.filterable || false,
+    required: col.required || false,
+    options: col.type === 'select'
+      ? col.optionsInput.split(',').map(o => o.trim()).filter(Boolean)
+      : []
+  }))
+
+/* ================= CREATE ================= */
 const createModule = async () => {
+  if (!editModule.value.name.trim()) return showToast('Module name required', 'error')
+  saving.value = true
   try {
-    if (!moduleName.value.trim()) return alert('Module name required')
-
-    const formattedColumns = columns.value.map(col => ({
-      name: col.name,
-      type: col.type,
-      filterable: col.filterable || false,
-      options:
-        col.type === 'select'
-          ? col.optionsInput.split(',').map(o => o.trim()).filter(Boolean)
-          : []
-    }))
-
     await api.post('/modules', {
-      name: moduleName.value,
-      columns: formattedColumns,
-      allowedProfiles: selectedProfiles.value,
+      name: editModule.value.name,
+      columns: formatColumns(editModule.value.columns),
+      allowedProfiles: editModule.value.allowedProfiles,
       userId: user.id
     })
-
-    resetForm()
     await loadModules()
-
+    closeEditor()
+    showToast('Module created', 'success')
   } catch (err) {
-    console.error('CREATE MODULE ERROR:', err)
+    console.error(err)
+    showToast('Failed to create module', 'error')
+  } finally {
+    saving.value = false
   }
 }
 
-/* ================= RESET ================= */
-const resetForm = () => {
-  moduleName.value = ''
-  columns.value = [{ name: '', type: 'varchar', optionsInput: '', options: [] }]
-  selectedProfiles.value = []
+/* ================= UPDATE ================= */
+const updateModule = async () => {
+  if (!editModule.value.name.trim()) return showToast('Module name required', 'error')
+  saving.value = true
+  try {
+    await api.put(`/modules/${editModule.value.id}`, {
+      name: editModule.value.name,
+      columns: formatColumns(editModule.value.columns),
+      allowedProfiles: editModule.value.allowedProfiles
+    })
+    await loadModules()
+    closeEditor()
+    showToast('Module updated', 'success')
+  } catch (err) {
+    console.error(err)
+    showToast('Failed to update module', 'error')
+  } finally {
+    saving.value = false
+  }
 }
 
 /* ================= DELETE ================= */
-const deleteModule = async (id) => {
+const askDelete = (m) => {
+  deleteTarget.value = m
+  showDeleteModal.value = true
+}
+
+const confirmDelete = async () => {
   try {
-    if (!confirm('Delete this module?')) return
-    await api.delete(`/modules/${id}`)
+    await api.delete(`/modules/${deleteTarget.value.id}`)
+    if (activeModule.value?.id === deleteTarget.value.id) closeEditor()
+    showDeleteModal.value = false
+    deleteTarget.value = null
     await loadModules()
+    showToast('Module deleted', 'success')
   } catch (err) {
     console.error(err)
+    showToast('Delete failed', 'error')
   }
 }
 
-/* ================= EDIT ================= */
-const openEdit = (m) => {
-  editModule.value = {
-    ...m,
-    columns: m.columns.map(col => ({
-      ...col,
-      filterable: col.filterable || false
-    }))
-  }
-
-  showModal.value = true
-}
-
-const closeModal = () => {
-  showModal.value = false
-}
-
-const updateModule = async () => {
-  try {
-    await api.put(`/modules/${editModule.value.id}`, editModule.value)
-    showModal.value = false
-    await loadModules()
-  } catch (err) {
-    console.error(err)
-  }
+const cancelDelete = () => {
+  deleteTarget.value = null
+  showDeleteModal.value = false
 }
 </script>
 
 <style scoped>
-/* ================= BASE LAYOUT ================= */
+/* ===== PAGE ===== */
 .page {
-  padding: 25px;
-  background: #f5f5f5;
+  padding: 24px;
+  background: #f6f8fb;
   min-height: 100vh;
+  font-family: Inter, Arial, sans-serif;
+  color: #111827;
+  box-sizing: border-box;
 }
 
-/* ================= HEADER ================= */
-.header {
-  margin-bottom: 20px;
-}
-
-/* ================= CARD LAYOUT ================= */
-.card {
-  background: white;
-  padding: 20px;
-  border-radius: 12px;
-  margin-bottom: 20px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-}
-
-/* ================= FORM ELEMENTS ================= */
-.form input,
-.form select {
-  padding: 10px;
-  margin: 5px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  outline: none;
-}
-
-.form input:focus,
-.form select:focus {
-  border-color: #1e90ff;
-}
-
-/* ================= COLUMNS ================= */
-.column-row {
+/* ===== TOAST ===== */
+.toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
   display: flex;
-  gap: 10px;
-  margin-bottom: 8px;
   align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 9999;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
 }
+.toast.success { background: #22c55e; }
+.toast.error { background: #ef4444; }
+.toast-icon { font-size: 14px; }
+.toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.25s ease; }
+.toast-slide-enter-from, .toast-slide-leave-to { opacity: 0; transform: translateY(-8px); }
 
-.columns {
-  margin-top: 10px;
-}
-
-/* ================= PROFILES ================= */
-.profiles {
-  margin-top: 15px;
-}
-
-.checkbox {
-  display: block;
-  margin: 5px 0;
-  cursor: pointer;
-}
-
-/* ================= MODULE LIST ================= */
-.module-card {
+/* ===== TOPBAR ===== */
+.topbar {
   display: flex;
   justify-content: space-between;
-  padding: 12px;
-  border-bottom: 1px solid #eee;
   align-items: center;
+  margin-bottom: 20px;
 }
+.topbar h1 { font-size: 20px; font-weight: 600; margin: 0; }
+.topbar p { font-size: 13px; color: #6b7280; margin: 2px 0 0; }
 
-.module-card h4 {
-  margin: 0;
-}
-
-/* ================= BUTTONS ================= */
-button {
+/* ===== BUTTONS ===== */
+.btn-primary {
+  background: #111827;
+  color: white;
   border: none;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
-  transition: 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content !important;
+  max-width: fit-content !important;
+  align-self: flex-start;
+  transition: background 0.15s;
 }
+.btn-primary:hover { background: #1f2937; }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
-button:hover {
-  opacity: 0.9;
+.btn-ghost {
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
 }
+.btn-ghost:hover { background: #f3f4f6; }
 
-.btn-blue {
-  background: #1e90ff;
+.btn-ghost-sm {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.btn-ghost-sm:hover { background: #f3f4f6; color: #374151; }
+
+.btn-danger {
+  background: #ef4444;
   color: white;
+  border: none;
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-danger:hover { background: #dc2626; }
+
+.btn-icon-left { font-size: 16px; line-height: 1; }
+
+/* ===== LAYOUT ===== */
+.two-col {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+  align-items: start;
 }
 
-.btn-red {
-  background: #ff4d4d;
-  color: white;
+/* ===== PANEL ===== */
+.panel {
+  background: white;
+  border: 1px solid #eef2f7;
+  border-radius: 14px;
+  padding: 16px;
 }
 
-.btn-green {
-  background: #28a745;
-  color: white;
+.panel-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 12px;
 }
 
-.small {
-  padding: 5px 10px;
-  font-size: 12px;
+/* ===== MODULE LIST ===== */
+.module-list { display: flex; flex-direction: column; gap: 6px; }
+
+.module-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.module-item:hover { border-color: #d1d5db; background: #fafafa; }
+.module-item.active { border-color: #bfdbfe; background: #eff6ff; }
+
+.module-info { flex: 1; min-width: 0; }
+.module-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.module-meta { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+.module-item.active .module-name { color: #1d4ed8; }
+.module-item.active .module-meta { color: #93c5fd; }
+
+.item-actions { display: flex; gap: 4px; margin-left: 8px; }
+
+.btn-icon-action {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  background: transparent;
+}
+.btn-icon-action.edit { color: #0284c7; }
+.btn-icon-action.edit:hover { background: #e0f2fe; }
+.btn-icon-action.danger { color: #dc2626; }
+.btn-icon-action.danger:hover { background: #fee2e2; }
+
+/* ===== EDITOR PANEL ===== */
+.editor-panel { display: flex; flex-direction: column; gap: 16px; }
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 
-.full {
+.active-badge {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 99px;
+  padding: 2px 10px;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+/* ===== FORM ===== */
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-label { font-size: 12px; color: #6b7280; font-weight: 500; }
+.form-input {
   width: 100%;
-  margin-top: 10px;
+  padding: 9px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #111827;
+  background: white;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.form-input:focus { border-color: #3b82f6; }
+
+/* ===== SECTION ===== */
+.section { display: flex; flex-direction: column; gap: 8px; }
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
-/* ================= MODAL ================= */
+/* ===== COLUMN ROW ===== */
+.col-row {
+  display: grid;
+  grid-template-columns: 20px 1fr 100px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+  background: #fafafa;
+  margin-bottom: 4px;
+}
+
+.drag-handle {
+  cursor: grab;
+  font-size: 16px;
+  color: #d1d5db;
+  user-select: none;
+  text-align: center;
+}
+.drag-handle:active { cursor: grabbing; }
+
+.col-input {
+  padding: 6px 9px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #111827;
+  background: white;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.col-input:focus { border-color: #3b82f6; }
+
+.col-select {
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #111827;
+  background: white;
+  outline: none;
+  width: 100%;
+}
+
+.col-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+
+.badge {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 99px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.badge-green { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+.badge-amber { background: #fef9c3; color: #92400e; border: 1px solid #fde68a; }
+.badge-off { background: #f3f4f6; color: #9ca3af; border: 1px solid #e5e7eb; }
+
+.btn-remove {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.btn-remove:hover { background: #fee2e2; }
+
+.btn-add-col {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 8px;
+  border: 1px dashed #d1d5db;
+  border-radius: 10px;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 2px;
+}
+.btn-add-col:hover { background: #f9fafb; color: #374151; border-color: #9ca3af; }
+
+/* ===== PROFILE CHIPS ===== */
+.profile-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 99px;
+  font-size: 12px;
+  color: #6b7280;
+  cursor: pointer;
+  background: white;
+  transition: all 0.15s;
+  user-select: none;
+}
+.chip:hover { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+.chip.active { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; font-weight: 500; }
+.chip-check { font-size: 11px; }
+
+/* ===== EDITOR FOOTER ===== */
+.editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  align-self: stretch;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid #eef2f7;
+  margin-top: 4px;
+}
+
+.editor-footer .btn-primary,
+.editor-footer .btn-ghost {
+  width: fit-content;
+  flex-shrink: 0;
+}
+
+/* ===== PLACEHOLDER ===== */
+.placeholder-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  border: 1px dashed #e5e7eb !important;
+  background: #fafafa !important;
+}
+.placeholder-content { text-align: center; color: #9ca3af; }
+.placeholder-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.4; }
+.placeholder-content p { font-size: 13px; line-height: 1.6; margin: 0; }
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+  text-align: center;
+  padding: 24px 0;
+  color: #9ca3af;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* ===== GHOST (DRAG) ===== */
+.ghost { opacity: 0.4; background: #eff6ff; border: 1px dashed #3b82f6; }
+
+/* ===== DELETE MODAL ===== */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0,0,0,0.4);
   display: flex;
   justify-content: center;
   align-items: center;
+  z-index: 9999;
 }
 
 .modal {
   background: white;
-  padding: 20px;
-  border-radius: 12px;
-  width: 320px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  border-radius: 16px;
+  width: 400px;
+  max-width: 92%;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
 }
 
-/* ================= EMPTY STATE ================= */
-.empty {
-  color: #888;
-  text-align: center;
-  padding: 10px;
+.modal-header {
+  padding: 18px 20px;
+  border-bottom: 1px solid #eef2f7;
+}
+.modal-header h3 { margin: 0; font-size: 15px; font-weight: 600; color: #dc2626; }
+.modal-header p { margin: 4px 0 0; font-size: 12px; color: #9ca3af; }
+
+.modal-body {
+  padding: 18px 20px;
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.6;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid #eef2f7;
+  background: #fafafa;
 }
 </style>
