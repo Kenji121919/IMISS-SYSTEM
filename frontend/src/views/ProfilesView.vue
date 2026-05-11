@@ -162,6 +162,8 @@ const verifyPin = async () => {
       const res = await api.get(`/profiles/single/${selectedProfile.value.id}`)
       const profile = res.data
 
+      const isAdmin = profile.team?.toLowerCase() === 'admin' || profile.name?.toLowerCase() === 'admin'
+
       localStorage.setItem('activeProfile', JSON.stringify({
         id: profile.id,
         userId: profile.userId,
@@ -169,10 +171,33 @@ const verifyPin = async () => {
         team: profile.team
       }))
 
-      showModal.value = false
-      window.location.href = '/dashboard'
+      if (isAdmin) {
+        showModal.value = false
+        window.location.href = '/dashboard'
+      } else {
+        const user = JSON.parse(localStorage.getItem('user') || '{}')
+        const modulesRes = await api.get(`/modules/${user.id}`)
+        const allModules = modulesRes.data || []
+
+        const assignedModules = allModules.filter(m => {
+          const allowed = m.allowedProfiles || []
+          return allowed.map(String).includes(String(profile.id))
+        })
+
+        if (assignedModules.length > 0) {
+          showModal.value = false
+          window.location.href = `/dashboard/module/${assignedModules[0].id}`
+        } else {
+          errorMessage.value = 'No modules assigned to this profile. Contact your admin.'
+          pin.value = ''
+          shakeError.value = true
+          setTimeout(() => (shakeError.value = false), 400)
+        }
+      }
     } catch (err) {
       console.error('Profile fetch failed:', err)
+      errorMessage.value = 'Something went wrong. Please try again.'
+      pin.value = ''
     }
   } else {
     errorMessage.value = 'Incorrect PIN. Please try again.'

@@ -3,14 +3,24 @@
 
     <!-- ===== TOP / LOGO ===== -->
     <div class="sidebar-top">
-      <div class="logo-wrap">
-        
-        <span v-if="!collapsed" class="logo-text">IMISS</span>
-      </div>
-      <button class="toggle-btn" @click="$emit('toggle')" :title="collapsed ? 'Expand' : 'Collapse'">
-        <Menu :size="16" />
-      </button>
-    </div>
+  <div class="logo-wrap">
+    <span v-if="!collapsed" class="logo-text">IMISS</span>
+  </div>
+  <button class="toggle-btn" @click="$emit('toggle')" :title="collapsed ? 'Expand' : 'Collapse'">
+    <Menu :size="16" />
+  </button>
+</div>
+
+<!-- PROFILE BADGE -->
+<div class="profile-badge" :class="{ collapsed }">
+  <div class="profile-badge-avatar" :style="{ background: avatarColor(activeProfile.name || '') }">
+    {{ activeProfile.name?.charAt(0).toUpperCase() }}
+  </div>
+  <div v-if="!collapsed" class="profile-badge-info">
+    <div class="profile-badge-name">{{ activeProfile.name }}</div>
+    
+  </div>
+</div>
 
     <!-- ===== MENU ===== -->
     <div class="menu-wrap">
@@ -90,11 +100,17 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import api from '@/api/axios'
-import { Menu, LogOut, User, Settings, LayoutGrid } from 'lucide-vue-next'
+import { Menu, LogOut, User, Settings, LayoutGrid, LayoutDashboard } from 'lucide-vue-next'
 
 defineProps({ collapsed: Boolean })
 defineEmits(['toggle'])
 
+const activeProfile = JSON.parse(localStorage.getItem('activeProfile') || '{}')
+const COLORS = [
+  '#6366f1','#0ea5e9','#10b981','#f59e0b',
+  '#ec4899','#8b5cf6','#14b8a6','#f97316'
+]
+const avatarColor = (name) => name ? COLORS[name.charCodeAt(0) % COLORS.length] : '#6366f1'
 const menuItems = ref([])
 
 /* ===== SPLIT ITEMS ===== */
@@ -116,18 +132,19 @@ onMounted(async () => {
     const modules = res.data || []
 
     if (isAdmin) {
-      menuItems.value = [
-        { id: 'admin-1', name: 'Manage Profiles', path: '/dashboard/manage-profiles', icon: User, isAdmin: true },
-        { id: 'admin-2', name: 'Manage Modules',  path: '/dashboard/manage-modules',  icon: Settings, isAdmin: true },
-        ...modules.map(mod => ({
-          id: mod.id,
-          name: mod.name,
-          path: `/dashboard/module/${mod.id}`,
-          icon: LayoutGrid,
-          isAdmin: false
-        }))
-      ]
-    } else {
+  menuItems.value = [
+    { id: 'admin-0', name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, isAdmin: true }, // ← add this
+    { id: 'admin-1', name: 'Manage Profiles', path: '/dashboard/manage-profiles', icon: User, isAdmin: true },
+    { id: 'admin-2', name: 'Manage Modules',  path: '/dashboard/manage-modules',  icon: Settings, isAdmin: true },
+    ...modules.map(mod => ({
+      id: mod.id,
+      name: mod.name,
+      path: `/dashboard/module/${mod.id}`,
+      icon: LayoutGrid,
+      isAdmin: false
+    }))
+  ]
+} else {
       menuItems.value = modules
         .filter(mod => {
           try {
@@ -392,5 +409,48 @@ const logout = () => {
 .bottom-btn.danger:hover {
   background: rgba(239,68,68,0.1);
   color: #ef4444;
+}
+
+.profile-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+.profile-badge.collapsed {
+  justify-content: center;
+  padding: 10px;
+}
+.profile-badge-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+.profile-badge-info {
+  overflow: hidden;
+}
+.profile-badge-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.profile-badge-role {
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

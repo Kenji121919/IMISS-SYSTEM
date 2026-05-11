@@ -149,7 +149,7 @@
             <div
               v-for="p in profiles"
               :key="p.id"
-              :class="['chip', { active: editModule.allowedProfiles?.includes(p.id) }]"
+              :class="['chip', { active: editModule.allowedProfiles?.map(String).includes(String(p.id)) }]"
               @click="toggleProfile(p.id)"
             >
               <span v-if="editModule.allowedProfiles?.includes(p.id)" class="chip-check">✓</span>
@@ -214,6 +214,7 @@
 import { ref, onMounted } from 'vue'
 import draggable from 'vuedraggable'
 import api from '@/api/axios'
+
 
 /* ================= STATE ================= */
 const modules = ref([])
@@ -306,7 +307,7 @@ const openEdit = (m) => {
           optionsInput: Array.isArray(col.options) ? col.options.join(',') : ''
         }))
       : [],
-    allowedProfiles: m.allowedProfiles?.map(p => typeof p === 'object' ? p.id : p) || []
+    allowedProfiles: m.allowedProfiles?.map(p => String(typeof p === 'object' ? p.id : p)) || []
   }
 }
 
@@ -335,8 +336,9 @@ const removeEditColumn = (i) => {
 /* ================= PROFILES ================= */
 const toggleProfile = (id) => {
   const list = editModule.value.allowedProfiles
-  const idx = list.indexOf(id)
-  if (idx === -1) list.push(id)
+  const strId = String(id)
+  const idx = list.findIndex(i => String(i) === strId)
+  if (idx === -1) list.push(strId)
   else list.splice(idx, 1)
 }
 
@@ -382,7 +384,7 @@ const updateModule = async () => {
     await api.put(`/modules/${editModule.value.id}`, {
       name: editModule.value.name,
       columns: formatColumns(editModule.value.columns),
-      allowedProfiles: editModule.value.allowedProfiles
+      allowedProfiles: editModule.value.allowedProfiles.map(Number)
     })
     await loadModules()
     closeEditor()
@@ -419,6 +421,8 @@ const cancelDelete = () => {
   deleteTarget.value = null
   showDeleteModal.value = false
 }
+
+
 </script>
 
 <style scoped>
