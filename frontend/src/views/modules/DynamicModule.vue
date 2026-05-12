@@ -15,9 +15,14 @@
         <h1>{{ module?.name || 'Module' }}</h1>
         <p>{{ filteredLogs.length }} of {{ logs.length }} records</p>
       </div>
-      <button class="btn-primary" @click="openAdd">
-        <span class="btn-icon-left">+</span> Add log
-      </button>
+      <div class="topbar-actions">
+        <button class="btn-outline" @click="printLogs" title="Print logs">
+          <span class="btn-icon-left">🖨</span> Print
+        </button>
+        <button class="btn-primary" @click="openAdd">
+          <span class="btn-icon-left">+</span> Add log
+        </button>
+      </div>
     </div>
 
     <!-- ================= FILTER BAR ================= -->
@@ -37,8 +42,37 @@
 
         <!-- COLUMN FILTERS -->
         <template v-for="col in columns.filter(c => c.filterable)" :key="col.name">
+
+          <!-- DATE RANGE FILTER -->
+          <template v-if="col.type === 'date'">
+            <div class="date-range-wrap">
+              
+              <div class="date-range-inputs">
+                <input
+                  type="date"
+                  v-model="dateFilters[col.name].from"
+                  class="filter-input date-input"
+                  title="From date"
+                />
+                <span class="date-sep">→</span>
+                <input
+                  type="date"
+                  v-model="dateFilters[col.name].to"
+                  class="filter-input date-input"
+                  title="To date"
+                />
+                <button
+                  class="btn-today"
+                  @click="setToday(col.name)"
+                  title="Set to today"
+                >Today</button>
+              </div>
+            </div>
+          </template>
+
+          <!-- SELECT FILTER -->
           <select
-            v-if="col.type === 'select'"
+            v-else-if="col.type === 'select'"
             v-model="activeFilters[col.name]"
             class="filter-select"
           >
@@ -47,6 +81,7 @@
             <option v-for="opt in col.options" :key="opt" :value="opt">{{ opt }}</option>
           </select>
 
+          <!-- TEXT FILTER -->
           <input
             v-else
             v-model="activeFilters[col.name]"
@@ -69,7 +104,7 @@
     <div class="panel" v-if="columns.length">
       <div class="table-wrapper">
 
-        <table class="table">
+        <table class="table" id="print-table">
           <thead>
             <tr>
               <th v-for="col in columns" :key="col.name">
@@ -78,12 +113,12 @@
                   <span v-if="col.required" class="req-dot" title="Required">*</span>
                 </div>
               </th>
-              <th class="th-actions">Actions</th>
+              <th class="th-actions no-print">Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            <tr v-if="filteredLogs.length === 0">
+            <tr v-if="pagedLogs.length === 0">
               <td :colspan="columns.length + 1" class="empty-row">
                 <div class="empty-state">
                   <div class="empty-icon">☰</div>
@@ -92,7 +127,7 @@
               </td>
             </tr>
 
-            <tr v-for="log in filteredLogs" :key="log.id">
+            <tr v-for="log in pagedLogs" :key="log.id">
               <td v-for="col in columns" :key="col.name">
                 <span v-if="getValue(log, col.name) !== '-'" class="cell-value">
                   {{ getValue(log, col.name) }}
@@ -100,7 +135,7 @@
                 <span v-else class="cell-empty">—</span>
               </td>
 
-              <td class="td-actions">
+              <td class="td-actions no-print">
                 <button class="btn-icon-action edit" @click="openEdit(log)" title="Edit">✏</button>
                 <button class="btn-icon-action danger" @click="askDelete(log)" title="Delete">🗑</button>
               </td>
@@ -108,6 +143,37 @@
           </tbody>
         </table>
 
+      </div>
+
+      <!-- ================= PAGINATION ================= -->
+      <div class="pagination-bar" v-if="totalPages > 1 || filteredLogs.length > 0">
+        <div class="pagination-info">
+          Showing {{ paginationFrom }}–{{ paginationTo }} of {{ filteredLogs.length }}
+        </div>
+
+        <div class="pagination-controls">
+          <select v-model="pageSize" class="page-size-select" @change="currentPage = 1">
+            <option :value="10">10 / page</option>
+            <option :value="25">25 / page</option>
+            <option :value="50">50 / page</option>
+            <option :value="100">100 / page</option>
+          </select>
+
+          <button class="page-btn" @click="currentPage = 1" :disabled="currentPage === 1" title="First">«</button>
+          <button class="page-btn" @click="currentPage--" :disabled="currentPage === 1" title="Previous">‹</button>
+
+          <template v-for="p in visiblePages" :key="p">
+            <button
+              v-if="p !== '...'"
+              :class="['page-btn', { active: p === currentPage }]"
+              @click="currentPage = p"
+            >{{ p }}</button>
+            <span v-else class="page-ellipsis">…</span>
+          </template>
+
+          <button class="page-btn" @click="currentPage++" :disabled="currentPage === totalPages" title="Next">›</button>
+          <button class="page-btn" @click="currentPage = totalPages" :disabled="currentPage === totalPages" title="Last">»</button>
+        </div>
       </div>
     </div>
 
@@ -217,7 +283,12 @@ const form = ref({})
 const fieldErrors = ref({})
 const searchQuery = ref('')
 const activeFilters = ref({})
+const dateFilters = ref({})   // { [colName]: { from: '', to: '' } }
 const saving = ref(false)
+
+/* ================= PAGINATION ================= */
+const currentPage = ref(1)
+const pageSize = ref(25)
 
 /* ================= TOAST ================= */
 const toast = ref({ show: false, message: '', type: 'success' })
@@ -233,6 +304,16 @@ const safeParse = (val) => {
   try { return JSON.parse(val) } catch { return [] }
 }
 
+/* ================= TODAY HELPER ================= */
+const todayStr = () => new Date().toISOString().slice(0, 10)  // YYYY-MM-DD
+
+const setToday = (colName) => {
+  const t = todayStr()
+  dateFilters.value[colName].from = t
+  dateFilters.value[colName].to   = t
+  currentPage.value = 1
+}
+
 /* ================= LOAD MODULE ================= */
 const loadModule = async () => {
   const res = await api.get(`/modules/single/${route.params.id}`)
@@ -245,8 +326,15 @@ const loadModule = async () => {
   }))
 
   activeFilters.value = {}
+  dateFilters.value   = {}
   columns.value.forEach(col => {
-    if (col.filterable) activeFilters.value[col.name] = ''
+    if (col.filterable) {
+      if (col.type === 'date') {
+        dateFilters.value[col.name] = { from: '', to: '' }
+      } else {
+        activeFilters.value[col.name] = ''
+      }
+    }
   })
 }
 
@@ -278,36 +366,106 @@ const loadAll = async () => {
 const getValue = (log, columnName) => log.data?.[columnName] ?? '-'
 
 /* ================= FILTERS ================= */
-const hasActiveFilters = computed(() =>
-  searchQuery.value || Object.values(activeFilters.value).some(v => v && v !== 'all')
-)
+const hasActiveFilters = computed(() => {
+  const hasText = !!searchQuery.value
+  const hasCol  = Object.values(activeFilters.value).some(v => v && v !== 'all')
+  const hasDate = Object.values(dateFilters.value).some(df => df.from || df.to)
+  return hasText || hasCol || hasDate
+})
 
 const clearFilters = () => {
   searchQuery.value = ''
   columns.value.forEach(col => {
-    if (col.filterable) activeFilters.value[col.name] = ''
+    if (col.filterable) {
+      if (col.type === 'date') {
+        dateFilters.value[col.name] = { from: '', to: '' }
+      } else {
+        activeFilters.value[col.name] = ''
+      }
+    }
   })
+  currentPage.value = 1
+}
+
+const parseDate = (val) => {
+  if (!val) return null
+  const d = new Date(val)
+  return isNaN(d) ? null : d
 }
 
 const filteredLogs = computed(() => {
   return logs.value.filter(log => {
-    const matchesSearch = !searchQuery.value || Object.values(log.data || {})
-      .join(' ').toLowerCase().includes(searchQuery.value.toLowerCase())
+    // Global search
+    const matchesSearch = !searchQuery.value ||
+      Object.values(log.data || {})
+        .join(' ').toLowerCase().includes(searchQuery.value.toLowerCase())
 
+    // Text / select filters
     const matchesFilters = Object.entries(activeFilters.value).every(([key, value]) => {
       if (!value || value === 'all') return true
       return String(getValue(log, key)).toLowerCase().includes(String(value).toLowerCase())
     })
 
-    return matchesSearch && matchesFilters
+    // Date range filters
+    const matchesDates = Object.entries(dateFilters.value).every(([key, range]) => {
+      const { from, to } = range
+      if (!from && !to) return true
+      const cellVal = getValue(log, key)
+      if (cellVal === '-' || !cellVal) return false
+      const cellDate = parseDate(cellVal)
+      if (!cellDate) return false
+      const fromDate = from ? parseDate(from) : null
+      const toDate   = to   ? parseDate(to)   : null
+      // Normalize toDate to end of day for inclusive range
+      if (toDate) toDate.setHours(23, 59, 59, 999)
+      if (fromDate && cellDate < fromDate) return false
+      if (toDate   && cellDate > toDate)   return false
+      return true
+    })
+
+    return matchesSearch && matchesFilters && matchesDates
   })
 })
+
+/* ================= PAGINATION COMPUTED ================= */
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredLogs.value.length / pageSize.value)))
+
+const pagedLogs = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredLogs.value.slice(start, start + pageSize.value)
+})
+
+const paginationFrom = computed(() =>
+  filteredLogs.value.length === 0 ? 0 : (currentPage.value - 1) * pageSize.value + 1
+)
+const paginationTo = computed(() =>
+  Math.min(currentPage.value * pageSize.value, filteredLogs.value.length)
+)
+
+// Show page numbers with ellipsis for large page counts
+const visiblePages = computed(() => {
+  const total = totalPages.value
+  const cur   = currentPage.value
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  const pages = []
+  if (cur <= 4) {
+    pages.push(1, 2, 3, 4, 5, '...', total)
+  } else if (cur >= total - 3) {
+    pages.push(1, '...', total - 4, total - 3, total - 2, total - 1, total)
+  } else {
+    pages.push(1, '...', cur - 1, cur, cur + 1, '...', total)
+  }
+  return pages
+})
+
+// Reset to page 1 when filters change
+watch([searchQuery, activeFilters, dateFilters], () => { currentPage.value = 1 }, { deep: true })
 
 /* ================= INPUT TYPE ================= */
 const inputType = (type) => {
   if (type === 'date') return 'date'
   if (type === 'time') return 'time'
-  if (type === 'int') return 'number'
+  if (type === 'int')  return 'number'
   return 'text'
 }
 
@@ -326,7 +484,7 @@ const validate = () => {
 
 /* ================= ADD ================= */
 const openAdd = () => {
-  isEdit.value = false
+  isEdit.value    = false
   selectedId.value = null
   fieldErrors.value = {}
   form.value = {}
@@ -336,11 +494,11 @@ const openAdd = () => {
 
 /* ================= EDIT ================= */
 const openEdit = (log) => {
-  isEdit.value = true
+  isEdit.value     = true
   selectedId.value = log.id
   fieldErrors.value = {}
   form.value = { ...log.data }
-  showModal.value = true
+  showModal.value  = true
 }
 
 /* ================= SAVE ================= */
@@ -388,8 +546,83 @@ const deleteLog = async () => {
 }
 
 const closeModal = () => {
-  showModal.value = false
+  showModal.value   = false
   fieldErrors.value = {}
+}
+
+/* ================= PRINT ================= */
+const printLogs = () => {
+  // Build active date range label for print header
+  const dateRangeLabels = Object.entries(dateFilters.value)
+    .filter(([, df]) => df.from || df.to)
+    .map(([key, df]) => {
+      const from = df.from || '—'
+      const to   = df.to   || '—'
+      return `${key}: ${from} → ${to}`
+    })
+    .join('  |  ')
+
+  const moduleName = module.value?.name || 'Module'
+  const printDate  = new Date().toLocaleDateString('en-PH', {
+    year: 'numeric', month: 'long', day: 'numeric'
+  })
+
+  // Collect all filtered logs (not just current page) for printing
+  const allFilteredData = filteredLogs.value
+
+  const colHeaders = columns.value.map(c => `<th>${c.name}</th>`).join('')
+  const rows = allFilteredData.map(log =>
+    `<tr>${columns.value.map(col => {
+      const val = getValue(log, col.name)
+      return `<td>${val === '-' ? '—' : val}</td>`
+    }).join('')}</tr>`
+  ).join('')
+
+  const win = window.open('', '_blank', 'width=900,height=700')
+  win.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>${moduleName} — Logs</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color: #111; padding: 24px; }
+        .print-header { margin-bottom: 18px; border-bottom: 2px solid #111827; padding-bottom: 12px; }
+        .print-header h1 { font-size: 20px; font-weight: 700; }
+        .print-meta { display: flex; gap: 24px; margin-top: 6px; font-size: 12px; color: #555; flex-wrap: wrap; }
+        .print-meta span { display: flex; align-items: center; gap: 4px; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        thead { background: #111827; color: white; }
+        th { padding: 9px 12px; text-align: left; font-weight: 600; letter-spacing: 0.03em; }
+        td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+        tbody tr:nth-child(even) { background: #f9fafb; }
+        .footer { margin-top: 16px; font-size: 11px; color: #9ca3af; text-align: right; }
+        @media print {
+          body { padding: 0; }
+          @page { margin: 15mm; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="print-header">
+        <h1>${moduleName}</h1>
+        <div class="print-meta">
+          <span>📅 Printed: ${printDate}</span>
+          <span>📋 Records: ${allFilteredData.length}</span>
+          ${dateRangeLabels ? `<span>🗓 Filter: ${dateRangeLabels}</span>` : ''}
+          ${searchQuery.value ? `<span>🔍 Search: "${searchQuery.value}"</span>` : ''}
+        </div>
+      </div>
+      <table>
+        <thead><tr>${colHeaders}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="footer">Generated from ${moduleName} Log System</div>
+      <script>window.onload = () => { window.print(); }<\/script>
+    </body>
+    </html>
+  `)
+  win.document.close()
 }
 
 /* ================= INIT ================= */
@@ -442,6 +675,7 @@ watch(() => route.params.id, async (newId, oldId) => {
 }
 .topbar h1 { font-size: 20px; font-weight: 600; margin: 0; }
 .topbar p  { font-size: 13px; color: #6b7280; margin: 2px 0 0; }
+.topbar-actions { display: flex; gap: 8px; align-items: center; }
 
 /* ===== BUTTONS ===== */
 .btn-primary {
@@ -456,12 +690,26 @@ watch(() => route.params.id, async (newId, oldId) => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  width: fit-content;
-  max-width: fit-content !important;
   transition: background 0.15s;
 }
 .btn-primary:hover    { background: #1f2937; }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btn-outline {
+  background: white;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+.btn-outline:hover { background: #f9fafb; border-color: #d1d5db; }
 
 .btn-ghost {
   background: transparent;
@@ -512,6 +760,20 @@ watch(() => route.params.id, async (newId, oldId) => {
 }
 .btn-clear:hover { background: #fee2e2; }
 
+.btn-today {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.btn-today:hover { background: #dbeafe; border-color: #93c5fd; }
+
 .btn-icon-left { font-size: 16px; line-height: 1; }
 
 /* ===== FILTER BAR PANEL ===== */
@@ -528,6 +790,33 @@ watch(() => route.params.id, async (newId, oldId) => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* Date range */
+.date-range-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.date-range-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.date-range-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.date-sep {
+  font-size: 12px;
+  color: #9ca3af;
+}
+.date-input {
+  min-width: 130px !important;
+  cursor: pointer;
 }
 
 /* Search */
@@ -557,7 +846,6 @@ watch(() => route.params.id, async (newId, oldId) => {
 }
 .search-input:focus { border-color: #3b82f6; }
 
-/* Filter controls */
 .filter-select,
 .filter-input {
   height: 36px;
@@ -643,9 +931,9 @@ watch(() => route.params.id, async (newId, oldId) => {
   transition: all 0.15s;
   background: transparent;
 }
-.btn-icon-action.edit   { color: #0284c7; }
+.btn-icon-action.edit         { color: #0284c7; }
 .btn-icon-action.edit:hover   { background: #e0f2fe; }
-.btn-icon-action.danger { color: #dc2626; }
+.btn-icon-action.danger       { color: #dc2626; }
 .btn-icon-action.danger:hover { background: #fee2e2; }
 
 /* ===== EMPTY STATE ===== */
@@ -666,6 +954,69 @@ watch(() => route.params.id, async (newId, oldId) => {
 .placeholder-content { text-align: center; color: #9ca3af; }
 .placeholder-icon { font-size: 28px; opacity: 0.3; margin-bottom: 8px; }
 .placeholder-content p { font-size: 13px; margin: 0; }
+
+/* ===== PAGINATION ===== */
+.pagination-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-top: 1px solid #f1f5f9;
+  background: #fafafa;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pagination-info {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.page-size-select {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  font-size: 12px;
+  color: #374151;
+  background: white;
+  outline: none;
+  cursor: pointer;
+  margin-right: 6px;
+}
+
+.page-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  background: white;
+  color: #374151;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.page-btn:hover:not(:disabled) { background: #f3f4f6; border-color: #d1d5db; }
+.page-btn.active { background: #111827; color: white; border-color: #111827; font-weight: 600; }
+.page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.page-ellipsis {
+  font-size: 13px;
+  color: #9ca3af;
+  padding: 0 4px;
+  line-height: 32px;
+}
 
 /* ===== MODAL ===== */
 .modal-backdrop {
@@ -755,11 +1106,21 @@ watch(() => route.params.id, async (newId, oldId) => {
   font-weight: 500;
 }
 
+/* ===== PRINT ===== */
+@media print {
+  .no-print { display: none !important; }
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
   .page { padding: 16px; }
   .topbar { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .topbar-actions { width: 100%; justify-content: flex-end; }
   .filter-bar { flex-direction: column; align-items: stretch; }
   .search-input, .filter-select, .filter-input { width: 100%; min-width: unset; }
+  .date-range-inputs { flex-wrap: wrap; }
+  .date-input { min-width: unset !important; flex: 1; }
+  .pagination-bar { flex-direction: column; align-items: flex-start; }
+  .pagination-controls { flex-wrap: wrap; }
 }
 </style>

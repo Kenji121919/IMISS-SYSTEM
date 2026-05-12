@@ -1,67 +1,174 @@
 <template>
   <div class="register-wrapper">
 
+    <!-- Background decorations -->
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-glow" aria-hidden="true"></div>
+
     <div class="register-card">
 
-      <h2>Create Account</h2>
-      <p>Register a new IMISS account</p>
+      <!-- LOGO -->
+      <div class="logo">
+        <div class="logo-mark" aria-hidden="true">
+          <span>I</span>
+        </div>
+        <div class="logo-text">
+          <h1>IMISS</h1>
+          <p>Create your account</p>
+        </div>
+      </div>
+
+      <div class="divider-line"></div>
 
       <!-- ERROR -->
-      <div v-if="errorMessage" class="error-box">
-        {{ errorMessage }}
-      </div>
+      <transition name="slide-down">
+        <div v-if="errorMessage" class="alert-box alert-error" role="alert">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {{ errorMessage }}
+        </div>
+      </transition>
 
       <!-- SUCCESS -->
-      <div v-if="successMessage" class="success-box">
-        {{ successMessage }}
-      </div>
+      <transition name="slide-down">
+        <div v-if="successMessage" class="alert-box alert-success" role="status">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          {{ successMessage }}
+        </div>
+      </transition>
 
       <!-- FORM -->
-      <input
-        v-model="username"
-        placeholder="Username"
-        autocomplete="username"
-      />
+      <form class="form" @submit.prevent="register" novalidate>
 
-      <input
-        v-model="email"
-        placeholder="Email"
-        autocomplete="email"
-      />
+        <!-- ROW: Username + Email side-by-side on wider screens -->
+        <div class="field-row">
 
-      <input
-        v-model="password"
-        type="password"
-        placeholder="Password"
-        autocomplete="new-password"
-      />
+          <!-- USERNAME -->
+          <div class="field" :class="{ focused: focusedField === 'username', filled: username, error: fieldErrors.username }">
+            <label for="username" class="field-label">Username</label>
+            <div class="field-inner">
+              <svg class="field-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <input
+                id="username"
+                v-model="username"
+                type="text"
+                :disabled="loading"
+                autocomplete="username"
+                @focus="focusedField = 'username'"
+                @blur="onBlur('username')"
+                @input="fieldErrors.username = ''"
+              />
+              <transition name="check-pop">
+                <svg v-if="username && !fieldErrors.username" class="field-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              </transition>
+            </div>
+            <p v-if="fieldErrors.username" class="field-error">{{ fieldErrors.username }}</p>
+          </div>
 
-      <input
-        v-model="confirmPassword"
-        type="password"
-        placeholder="Confirm Password"
-        autocomplete="new-password"
-      />
+          <!-- EMAIL -->
+          <div class="field" :class="{ focused: focusedField === 'email', filled: email, error: fieldErrors.email }">
+            <label for="email" class="field-label">Email</label>
+            <div class="field-inner">
+              <svg class="field-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              <input
+                id="email"
+                v-model="email"
+                type="email"
+                :disabled="loading"
+                autocomplete="email"
+                @focus="focusedField = 'email'"
+                @blur="onBlur('email')"
+                @input="fieldErrors.email = ''"
+              />
+              <transition name="check-pop">
+                <svg v-if="isValidEmail && !fieldErrors.email" class="field-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              </transition>
+            </div>
+            <p v-if="fieldErrors.email" class="field-error">{{ fieldErrors.email }}</p>
+          </div>
 
-      <!-- BUTTON -->
-      <button class="register-btn" @click="register" :disabled="loading">
-        <span v-if="loading">Creating...</span>
-        <span v-else>Register</span>
-      </button>
+        </div>
+
+        <!-- PASSWORD -->
+        <div class="field" :class="{ focused: focusedField === 'password', filled: password }">
+          <label for="password" class="field-label">Password</label>
+          <div class="field-inner">
+            <svg class="field-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <input
+              id="password"
+              v-model="password"
+              :type="showPassword ? 'text' : 'password'"
+              :disabled="loading"
+              autocomplete="new-password"
+              @focus="focusedField = 'password'"
+              @blur="focusedField = ''"
+            />
+            <button
+              type="button"
+              class="eye-toggle"
+              @click="showPassword = !showPassword"
+              :aria-label="showPassword ? 'Hide password' : 'Show password'"
+            >
+              <svg v-if="showPassword" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+
+          <!-- PASSWORD STRENGTH -->
+          <div v-if="password" class="strength-section" aria-label="Password strength">
+            <div class="strength-bars" role="presentation">
+              <span
+                v-for="i in 4"
+                :key="i"
+                class="strength-bar"
+                :class="{ active: i <= passwordStrength.level, [`c-${passwordStrength.color}`]: i <= passwordStrength.level }"
+              ></span>
+            </div>
+            <span class="strength-label" :class="`text-${passwordStrength.color}`">{{ passwordStrength.label }}</span>
+          </div>
+        </div>
+
+        <!-- CONFIRM PASSWORD -->
+        <div class="field" :class="{ focused: focusedField === 'confirm', filled: confirmPassword, error: fieldErrors.confirm }">
+          <label for="confirm" class="field-label">Confirm Password</label>
+          <div class="field-inner">
+            <svg class="field-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <input
+              id="confirm"
+              v-model="confirmPassword"
+              :type="showPassword ? 'text' : 'password'"
+              :disabled="loading"
+              autocomplete="new-password"
+              @focus="focusedField = 'confirm'"
+              @blur="onBlur('confirm')"
+              @input="fieldErrors.confirm = ''"
+            />
+            <transition name="check-pop">
+              <svg v-if="confirmPassword && password === confirmPassword" class="field-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            </transition>
+          </div>
+          <p v-if="fieldErrors.confirm" class="field-error">{{ fieldErrors.confirm }}</p>
+        </div>
+
+        <!-- SUBMIT -->
+        <button type="submit" class="submit-btn" :disabled="loading" :class="{ loading }">
+          <span v-if="loading" class="spinner" aria-hidden="true"></span>
+          <span>{{ loading ? 'Creating account…' : 'Create Account' }}</span>
+        </button>
+
+      </form>
 
       <!-- BACK TO LOGIN -->
-      <p class="back">
+      <p class="login-prompt">
         Already have an account?
-        <span @click="router.push('/')">Login</span>
+        <router-link to="/" class="login-link">Sign in</router-link>
       </p>
 
     </div>
-
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/api/axios'
 
@@ -73,24 +180,80 @@ const password = ref('')
 const confirmPassword = ref('')
 
 const loading = ref(false)
+const showPassword = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
+const focusedField = ref('')
 
-/* ================= REGISTER ================= */
+const fieldErrors = reactive({
+  username: '',
+  email: '',
+  confirm: '',
+})
+
+/* ─── EMAIL VALIDATION ─── */
+const isValidEmail = computed(() =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)
+)
+
+/* ─── PASSWORD STRENGTH ─── */
+const passwordStrength = computed(() => {
+  const p = password.value
+  if (!p) return { level: 0, label: '', color: 'gray' }
+
+  let score = 0
+  if (p.length >= 8) score++
+  if (/[A-Z]/.test(p)) score++
+  if (/[0-9]/.test(p)) score++
+  if (/[^A-Za-z0-9]/.test(p)) score++
+
+  const map = [
+    { level: 1, label: 'Weak',    color: 'red'    },
+    { level: 2, label: 'Fair',    color: 'amber'  },
+    { level: 3, label: 'Good',    color: 'blue'   },
+    { level: 4, label: 'Strong',  color: 'green'  },
+  ]
+  return map[score - 1] || { level: 1, label: 'Weak', color: 'red' }
+})
+
+/* ─── BLUR VALIDATION ─── */
+const onBlur = (field) => {
+  focusedField.value = ''
+  if (field === 'email' && email.value && !isValidEmail.value) {
+    fieldErrors.email = 'Enter a valid email address'
+  }
+  if (field === 'confirm' && confirmPassword.value && password.value !== confirmPassword.value) {
+    fieldErrors.confirm = 'Passwords do not match'
+  }
+  if (field === 'username' && username.value && username.value.length < 3) {
+    fieldErrors.username = 'At least 3 characters required'
+  }
+}
+
+/* ─── REGISTER ─── */
 const register = async () => {
   errorMessage.value = ''
   successMessage.value = ''
 
-  // validation
-  if (!username.value || !email.value || !password.value) {
-    errorMessage.value = 'Please fill all fields'
-    return
+  // Full validation pass
+  let hasError = false
+  if (!username.value || username.value.length < 3) {
+    fieldErrors.username = 'At least 3 characters required'
+    hasError = true
   }
-
+  if (!email.value || !isValidEmail.value) {
+    fieldErrors.email = 'Enter a valid email address'
+    hasError = true
+  }
+  if (!password.value) {
+    errorMessage.value = 'Please enter a password'
+    hasError = true
+  }
   if (password.value !== confirmPassword.value) {
-    errorMessage.value = 'Passwords do not match'
-    return
+    fieldErrors.confirm = 'Passwords do not match'
+    hasError = true
   }
+  if (hasError) return
 
   loading.value = true
 
@@ -101,17 +264,12 @@ const register = async () => {
       password: password.value,
     })
 
-    // SUCCESS MESSAGE
-    successMessage.value = 'Account created successfully! Redirecting...'
+    successMessage.value = 'Account created! Redirecting to login…'
 
-    // small delay before redirect
-    setTimeout(() => {
-      router.push('/')
-    }, 1500)
+    setTimeout(() => router.push('/'), 1500)
 
   } catch (err) {
-    errorMessage.value =
-      err.response?.data?.message || 'Registration failed'
+    errorMessage.value = err.response?.data?.message || 'Registration failed'
   } finally {
     loading.value = false
   }
@@ -119,67 +277,372 @@ const register = async () => {
 </script>
 
 <style scoped>
+/* ─── LAYOUT ─── */
 .register-wrapper {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
-  justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #111, #222);
+  justify-content: center;
+  background: #0a0a0c;
+  font-family: 'Inter', 'SF Pro Display', -apple-system, sans-serif;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
 }
 
+.bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+}
+
+.bg-glow {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(99,102,241,0.07) 0%, transparent 70%);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* ─── CARD ─── */
 .register-card {
   width: 100%;
-  max-width: 380px;
-  background: white;
-  padding: 30px;
-  border-radius: 12px;
-  text-align: center;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  max-width: 460px;
+  background: #141416;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 20px;
+  padding: 36px 32px;
+  position: relative;
+  z-index: 1;
 }
 
-input {
+/* ─── LOGO ─── */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.logo-mark {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.logo-mark span {
+  color: white;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -1px;
+}
+
+.logo-text h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: #f0f0f4;
+  letter-spacing: -0.5px;
+}
+
+.logo-text p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #6b7280;
+  letter-spacing: 0.02em;
+}
+
+.divider-line {
+  height: 1px;
+  background: rgba(255,255,255,0.06);
+  margin-bottom: 24px;
+}
+
+/* ─── ALERTS ─── */
+.alert-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.alert-error {
+  background: rgba(248,113,113,0.1);
+  color: #f87171;
+  border: 1px solid rgba(248,113,113,0.2);
+}
+
+.alert-success {
+  background: rgba(52,211,153,0.1);
+  color: #34d399;
+  border: 1px solid rgba(52,211,153,0.2);
+}
+
+/* ─── FORM ─── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 440px) {
+  .field-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: color 0.2s;
+}
+
+.field.focused .field-label {
+  color: #818cf8;
+}
+
+.field.error .field-label {
+  color: #f87171;
+}
+
+.field-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.field-icon {
+  position: absolute;
+  left: 13px;
+  color: #4b5563;
+  transition: color 0.2s;
+  pointer-events: none;
+}
+
+.field.focused .field-icon {
+  color: #818cf8;
+}
+
+.field.error .field-icon {
+  color: #f87171;
+}
+
+.field-inner input {
   width: 100%;
   box-sizing: border-box;
-  padding: 12px;
-  margin: 8px 0;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  padding: 11px 36px 11px 38px;
+  background: #1c1c1f;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  color: #f0f0f4;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
 }
 
-.register-btn {
+.field-inner input::placeholder {
+  color: transparent;
+}
+
+.field-inner input:focus {
+  border-color: rgba(99,102,241,0.5);
+  background: #1e1e22;
+}
+
+.field.error .field-inner input {
+  border-color: rgba(248,113,113,0.4);
+}
+
+.field-inner input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Checkmark inside field */
+.field-check {
+  position: absolute;
+  right: 12px;
+  color: #34d399;
+  pointer-events: none;
+}
+
+.eye-toggle {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #4b5563;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+}
+
+.eye-toggle:hover {
+  color: #9ca3af;
+}
+
+.field-error {
+  font-size: 11.5px;
+  color: #f87171;
+  margin: 0;
+}
+
+/* ─── PASSWORD STRENGTH ─── */
+.strength-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.strength-bars {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.strength-bar {
+  flex: 1;
+  height: 3px;
+  border-radius: 99px;
+  background: rgba(255,255,255,0.08);
+  transition: background 0.3s;
+}
+
+.strength-bar.active.c-red    { background: #f87171; }
+.strength-bar.active.c-amber  { background: #fbbf24; }
+.strength-bar.active.c-blue   { background: #60a5fa; }
+.strength-bar.active.c-green  { background: #34d399; }
+
+.strength-label {
+  font-size: 11px;
+  font-weight: 500;
+  min-width: 38px;
+  text-align: right;
+}
+
+.text-red   { color: #f87171; }
+.text-amber { color: #fbbf24; }
+.text-blue  { color: #60a5fa; }
+.text-green { color: #34d399; }
+
+/* ─── SUBMIT BUTTON ─── */
+.submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   width: 100%;
   padding: 12px;
-  margin-top: 10px;
-  background: #1e90ff;
+  background: linear-gradient(135deg, #6366f1, #818cf8);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.2s, transform 0.15s;
+  margin-top: 4px;
 }
 
-.error-box {
-  background: #ffe5e5;
-  color: #d10000;
-  padding: 10px;
-  margin-bottom: 10px;
-  border-radius: 8px;
+.submit-btn:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
 }
 
-.success-box {
-  background: #e6ffed;
-  color: #1a7f37;
-  padding: 10px;
-  margin-bottom: 10px;
-  border-radius: 8px;
+.submit-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
-.back {
-  margin-top: 12px;
+.submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── LOGIN PROMPT ─── */
+.login-prompt {
+  text-align: center;
   font-size: 13px;
+  color: #6b7280;
+  margin-top: 20px;
+  margin-bottom: 0;
 }
 
-.back span {
-  color: #1e90ff;
-  cursor: pointer;
+.login-link {
+  color: #818cf8;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.login-link:hover {
+  color: #a5b4fc;
+}
+
+/* ─── TRANSITIONS ─── */
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.25s ease;
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.check-pop-enter-active {
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.check-pop-enter-from {
+  opacity: 0;
+  transform: scale(0.5);
 }
 </style>

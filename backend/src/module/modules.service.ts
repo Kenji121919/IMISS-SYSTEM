@@ -12,35 +12,51 @@ export class ModulesService {
 
   // ================= CREATE =================
   async create(body: any) {
-    const module = this.repo.create({
-      name: body.name,
-      columns: body.columns,
-      allowedProfiles: body.allowedProfiles,
-      userId: body.userId
-    })
 
-    return this.repo.save(module)
-  }
+  const module = this.repo.create({
+    name: body.name,
+
+    columns: body.columns || [],
+
+    allowedProfiles: body.allowedProfiles || [],
+
+    userId: body.userId
+  })
+
+  return await this.repo.save(module)
+}
 
   // ================= FIND ALL =================
   async findAll(userId: number) {
     return this.repo.find({
-      where: { userId }
+      where: { userId },
+      relations: ['columns'] // ✅ IMPORTANT
     })
   }
 
   // ================= FIND ONE =================
   async findOne(id: number) {
     return this.repo.findOne({
-      where: { id }
+      where: { id },
+      relations: ['columns'] // ✅ IMPORTANT
     })
   }
 
   // ================= UPDATE =================
   async update(id: number, body: any) {
-    await this.repo.update(id, body)
-    return this.findOne(id)
-  }
+  const module = await this.repo.findOne({
+    where: { id },
+    relations: ['columns']
+  })
+
+  if (!module) return null
+
+  module.name = body.name
+  module.columns = body.columns
+  module.allowedProfiles = body.allowedProfiles || []  // ✅ add this
+
+  return this.repo.save(module)
+}
 
   // ================= DELETE =================
   async delete(id: number) {

@@ -1,6 +1,12 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm'
-import { Log } from './log.entity'
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  OneToMany
+} from 'typeorm'
+
 import { ModuleColumn } from './module-column.entity'
+import { Log } from './log.entity'
 
 @Entity()
 export class Module {
@@ -10,18 +16,17 @@ export class Module {
   @Column()
   name!: string
 
-  // ✅ FIX: use relational columns instead of JSON
+  @Column()
+  userId!: number
+
+  @Column('json', { nullable: true })
+  allowedProfiles!: any[]
+
   @OneToMany(() => ModuleColumn, col => col.module, {
     cascade: true,
     eager: true
   })
   columns!: ModuleColumn[]
-
-  @Column('json')
-  allowedProfiles!: number[]
-
-  @Column()
-  userId!: number
 
   @OneToMany(() => Log, log => log.module)
   logs!: Log[]

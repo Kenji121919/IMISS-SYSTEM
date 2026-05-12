@@ -4,7 +4,6 @@ import {
   Column,
   ManyToOne
 } from 'typeorm'
-
 import { Module } from './module.entity'
 
 @Entity()
@@ -18,11 +17,14 @@ export class ModuleColumn {
   @Column()
   type!: string
 
-  @Column('simple-json', { nullable: true })
-  options!: string[]
-
   @Column({ default: false })
   filterable!: boolean
+
+  @Column({ default: false })
+  required!: boolean
+
+  @Column('simple-array', { nullable: true })
+  options!: string[]
 
   @ManyToOne(() => Module, module => module.columns, {
     onDelete: 'CASCADE'
