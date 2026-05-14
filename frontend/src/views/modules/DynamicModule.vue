@@ -127,10 +127,20 @@
         <table class="table" id="print-table">
           <thead>
             <tr>
-              <th v-for="col in columns" :key="col.name">
+              <th
+                v-for="col in columns"
+                :key="col.name"
+                class="sortable-th"
+                @click="setSort(col.name)"
+                :title="`Sort by ${col.name}`"
+              >
                 <div class="th-inner">
                   {{ col.name }}
                   <span v-if="col.required" class="req-dot" title="Required">*</span>
+                  <span class="sort-icon">
+                    <span :class="['sort-arrow', 'asc', { active: sortKey === col.name && sortDir === 'asc' }]">▲</span>
+                    <span :class="['sort-arrow', 'desc', { active: sortKey === col.name && sortDir === 'desc' }]">▼</span>
+                  </span>
                 </div>
               </th>
               <th class="th-actions no-print">Actions</th>
@@ -169,6 +179,10 @@
       <div class="pagination-bar" v-if="totalPages > 1 || filteredLogs.length > 0">
         <div class="pagination-info">
           Showing {{ paginationFrom }}–{{ paginationTo }} of {{ filteredLogs.length }}
+          <span v-if="sortKey" class="sort-badge">
+            Sorted by <strong>{{ sortKey }}</strong> {{ sortDir === 'asc' ? '↑' : '↓' }}
+            <button class="btn-clear-sort" @click="clearSort" title="Clear sort">✕</button>
+          </span>
         </div>
 
         <div class="pagination-controls">
@@ -205,7 +219,6 @@
     </div>
 
     <!-- ================= ADD / EDIT MODAL ================= -->
-    <!-- Backdrop does NOT have @click.self — modal only closes via X or Cancel -->
     <div v-if="showModal" class="modal-backdrop">
       <div class="modal">
 
@@ -263,7 +276,6 @@
     </div>
 
     <!-- ================= DELETE MODAL ================= -->
-    <!-- Backdrop does NOT have @click.self — modal only closes via Cancel or Delete -->
     <div v-if="showDelete" class="modal-backdrop">
       <div class="modal">
 
@@ -305,8 +317,27 @@ const form = ref({})
 const fieldErrors = ref({})
 const searchQuery = ref('')
 const activeFilters = ref({})
-const dateFilters = ref({})   // { [colName]: { from: '', to: '' } }
+const dateFilters = ref({})
 const saving = ref(false)
+
+/* ================= SORT ================= */
+const sortKey = ref('')   // column name or ''
+const sortDir = ref('asc') // 'asc' | 'desc'
+
+const setSort = (colName) => {
+  if (sortKey.value === colName) {
+    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortKey.value = colName
+    sortDir.value = 'asc'
+  }
+  currentPage.value = 1
+}
+
+const clearSort = () => {
+  sortKey.value = ''
+  sortDir.value = 'asc'
+}
 
 /* ================= PAGINATION ================= */
 const currentPage = ref(1)
@@ -416,7 +447,7 @@ const parseDate = (val) => {
 }
 
 const filteredLogs = computed(() => {
-  return logs.value.filter(log => {
+  const base = logs.value.filter(log => {
     const matchesSearch = !searchQuery.value ||
       Object.values(log.data || {})
         .join(' ').toLowerCase().includes(searchQuery.value.toLowerCase())
@@ -442,6 +473,34 @@ const filteredLogs = computed(() => {
     })
 
     return matchesSearch && matchesFilters && matchesDates
+  })
+
+  // Apply sort
+  if (!sortKey.value) return base
+
+  const col = columns.value.find(c => c.name === sortKey.value)
+  const dir = sortDir.value === 'asc' ? 1 : -1
+
+  return [...base].sort((a, b) => {
+    const aVal = getValue(a, sortKey.value)
+    const bVal = getValue(b, sortKey.value)
+
+    // Treat missing values as last always
+    if (aVal === '-' || aVal == null) return 1
+    if (bVal === '-' || bVal == null) return -1
+
+    // Numeric sort for int columns
+    if (col?.type === 'int') {
+      return (Number(aVal) - Number(bVal)) * dir
+    }
+
+    // Date/time sort
+    if (col?.type === 'date' || col?.type === 'time') {
+      return (new Date(aVal) - new Date(bVal)) * dir
+    }
+
+    // Default: locale string sort
+    return String(aVal).localeCompare(String(bVal), undefined, { sensitivity: 'base' }) * dir
   })
 })
 
@@ -592,6 +651,10 @@ const printLogs = () => {
     }).join('')}</tr>`
   ).join('')
 
+  const sortInfo = sortKey.value
+    ? `<span>⇅ Sorted by: ${sortKey.value} (${sortDir.value === 'asc' ? '↑ asc' : '↓ desc'})</span>`
+    : ''
+
   const win = window.open('', '_blank', 'width=900,height=700')
   win.document.write(`
     <!DOCTYPE html>
@@ -625,6 +688,7 @@ const printLogs = () => {
           <span>📋 Records: ${allFilteredData.length}</span>
           ${dateRangeLabels ? `<span>🗓 Filter: ${dateRangeLabels}</span>` : ''}
           ${searchQuery.value ? `<span>🔍 Search: "${searchQuery.value}"</span>` : ''}
+          ${sortInfo}
         </div>
       </div>
       <table>
@@ -837,7 +901,6 @@ watch(() => route.params.id, async (newId, oldId) => {
   box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
 }
 
-/* Floating label base state (centred vertically) */
 .fl-label {
   position: absolute;
   left: 10px;
@@ -851,7 +914,6 @@ watch(() => route.params.id, async (newId, oldId) => {
   background: transparent;
 }
 
-/* Float UP: input focused OR has a value (non-empty placeholder trick) */
 .fl-wrap .fl-input:focus ~ .fl-label,
 .fl-wrap .fl-input:not(:placeholder-shown) ~ .fl-label {
   top: 6px;
@@ -862,7 +924,6 @@ watch(() => route.params.id, async (newId, oldId) => {
   letter-spacing: 0.03em;
 }
 
-/* Select labels always float (selects always have a value) */
 .fl-label-select {
   top: 6px;
   transform: translateY(0);
@@ -872,10 +933,7 @@ watch(() => route.params.id, async (newId, oldId) => {
   letter-spacing: 0.03em;
 }
 
-/* Search input — icon offset */
-.fl-search {
-  min-width: 180px;
-}
+.fl-search { min-width: 180px; }
 .search-icon {
   position: absolute;
   left: 10px;
@@ -886,9 +944,7 @@ watch(() => route.params.id, async (newId, oldId) => {
   transition: color 0.15s;
   z-index: 1;
 }
-.fl-search:focus-within .search-icon {
-  color: #3b82f6;
-}
+.fl-search:focus-within .search-icon { color: #3b82f6; }
 .search-input {
   height: 44px;
   padding: 16px 10px 4px 30px;
@@ -906,9 +962,7 @@ watch(() => route.params.id, async (newId, oldId) => {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
 }
-.search-label {
-  left: 30px;
-}
+.search-label { left: 30px; }
 .fl-search .search-input:focus ~ .search-label,
 .fl-search .search-input:not(:placeholder-shown) ~ .search-label {
   top: 6px;
@@ -923,22 +977,9 @@ watch(() => route.params.id, async (newId, oldId) => {
 .fl-select { min-width: 140px; }
 .fl-text   { min-width: 130px; }
 
-/* Date range */
-.date-range-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.date-range-inputs {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-}
-.date-sep {
-  font-size: 12px;
-  color: #9ca3af;
-  padding-bottom: 13px;
-}
+.date-range-wrap { display: flex; flex-direction: column; gap: 4px; }
+.date-range-inputs { display: flex; align-items: flex-end; gap: 6px; }
+.date-sep { font-size: 12px; color: #9ca3af; padding-bottom: 13px; }
 
 /* ===== PANEL ===== */
 .panel {
@@ -967,7 +1008,40 @@ watch(() => route.params.id, async (newId, oldId) => {
   color: white;
   letter-spacing: 0.04em;
 }
-.th-inner { display: flex; align-items: center; gap: 4px; }
+
+/* ===== SORTABLE HEADER ===== */
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.sortable-th:hover { background: #1f2937; }
+
+.th-inner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sort-icon {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: 2px;
+  line-height: 1;
+}
+
+.sort-arrow {
+  font-size: 8px;
+  opacity: 0.25;
+  transition: opacity 0.15s;
+  line-height: 1;
+}
+.sort-arrow.active {
+  opacity: 1;
+  color: #60a5fa;
+}
+
 .th-actions { text-align: right; }
 
 .req-dot {
@@ -1048,7 +1122,38 @@ watch(() => route.params.id, async (newId, oldId) => {
 .pagination-info {
   font-size: 12px;
   color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
+
+.sort-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  border-radius: 99px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.btn-clear-sort {
+  background: none;
+  border: none;
+  color: #93c5fd;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 2px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+.btn-clear-sort:hover { color: #1d4ed8; }
 
 .pagination-controls {
   display: flex;
@@ -1107,7 +1212,6 @@ watch(() => route.params.id, async (newId, oldId) => {
   overflow-y: auto;
   padding: 40px 16px;
   z-index: 9999;
-  /* No @click.self — backdrop click intentionally does nothing */
 }
 
 .modal {
