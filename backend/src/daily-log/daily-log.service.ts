@@ -36,4 +36,12 @@ export class DailyLogService {
   update(id: number, data: any) {
     return this.repo.update(id, data)
   }
+
+  async findByModule(department: string) {
+  return this.repo.find({
+    where: {
+      department: department,
+    },
+  })
+}
 }

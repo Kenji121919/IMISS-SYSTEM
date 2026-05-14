@@ -52,4 +52,10 @@ export class DailyLogsController {
   remove(@Param('id') id: string) {
     return this.service.delete(+id)
   }
+
+ @Get('department/:department')
+@UseGuards(JwtAuthGuard)
+findByDepartment(@Param('department') department: string) {
+  return this.service.findByModule(department)
+}
 }

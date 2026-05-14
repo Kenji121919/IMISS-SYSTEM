@@ -30,14 +30,16 @@
       <div class="filter-bar">
 
         <!-- GLOBAL SEARCH -->
-        <div class="search-wrap">
+        <div class="fl-wrap fl-search">
           <span class="search-icon">⌕</span>
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Search logs…"
+            placeholder=" "
             class="search-input"
+            id="global-search"
           />
+          <label for="global-search" class="fl-label search-label">Search logs…</label>
         </div>
 
         <!-- COLUMN FILTERS -->
@@ -46,21 +48,32 @@
           <!-- DATE RANGE FILTER -->
           <template v-if="col.type === 'date'">
             <div class="date-range-wrap">
-              
               <div class="date-range-inputs">
-                <input
-                  type="date"
-                  v-model="dateFilters[col.name].from"
-                  class="filter-input date-input"
-                  title="From date"
-                />
+
+                <div class="fl-wrap fl-date">
+                  <input
+                    type="date"
+                    v-model="dateFilters[col.name].from"
+                    class="fl-input"
+                    :id="`date-from-${col.name}`"
+                    placeholder=" "
+                  />
+                  <label :for="`date-from-${col.name}`" class="fl-label">From date</label>
+                </div>
+
                 <span class="date-sep">→</span>
-                <input
-                  type="date"
-                  v-model="dateFilters[col.name].to"
-                  class="filter-input date-input"
-                  title="To date"
-                />
+
+                <div class="fl-wrap fl-date">
+                  <input
+                    type="date"
+                    v-model="dateFilters[col.name].to"
+                    class="fl-input"
+                    :id="`date-to-${col.name}`"
+                    placeholder=" "
+                  />
+                  <label :for="`date-to-${col.name}`" class="fl-label">To date</label>
+                </div>
+
                 <button
                   class="btn-today"
                   @click="setToday(col.name)"
@@ -71,23 +84,30 @@
           </template>
 
           <!-- SELECT FILTER -->
-          <select
-            v-else-if="col.type === 'select'"
-            v-model="activeFilters[col.name]"
-            class="filter-select"
-          >
-            <option value="" disabled selected>{{ col.name }}</option>
-            <option value="all">All</option>
-            <option v-for="opt in col.options" :key="opt" :value="opt">{{ opt }}</option>
-          </select>
+          <div v-else-if="col.type === 'select'" class="fl-wrap fl-select">
+            <select
+              v-model="activeFilters[col.name]"
+              class="fl-input"
+              :id="`filter-select-${col.name}`"
+            >
+              <option value="all">All</option>
+              <option v-for="opt in col.options" :key="opt" :value="opt">{{ opt }}</option>
+            </select>
+            <label :for="`filter-select-${col.name}`" class="fl-label fl-label-select">{{ col.name }}</label>
+          </div>
 
           <!-- TEXT FILTER -->
-          <input
-            v-else
-            v-model="activeFilters[col.name]"
-            :placeholder="`Filter ${col.name}`"
-            class="filter-input"
-          />
+          <div v-else class="fl-wrap fl-text">
+            <input
+              v-model="activeFilters[col.name]"
+              type="text"
+              placeholder=" "
+              class="fl-input"
+              :id="`filter-text-${col.name}`"
+            />
+            <label :for="`filter-text-${col.name}`" class="fl-label">{{ col.name }}</label>
+          </div>
+
         </template>
 
         <!-- CLEAR FILTERS -->
@@ -185,7 +205,8 @@
     </div>
 
     <!-- ================= ADD / EDIT MODAL ================= -->
-    <div v-if="showModal" class="modal-backdrop" @click.self="closeModal">
+    <!-- Backdrop does NOT have @click.self — modal only closes via X or Cancel -->
+    <div v-if="showModal" class="modal-backdrop">
       <div class="modal">
 
         <div class="modal-header">
@@ -242,7 +263,8 @@
     </div>
 
     <!-- ================= DELETE MODAL ================= -->
-    <div v-if="showDelete" class="modal-backdrop" @click.self="showDelete = false">
+    <!-- Backdrop does NOT have @click.self — modal only closes via Cancel or Delete -->
+    <div v-if="showDelete" class="modal-backdrop">
       <div class="modal">
 
         <div class="modal-header danger-header">
@@ -305,7 +327,7 @@ const safeParse = (val) => {
 }
 
 /* ================= TODAY HELPER ================= */
-const todayStr = () => new Date().toISOString().slice(0, 10)  // YYYY-MM-DD
+const todayStr = () => new Date().toISOString().slice(0, 10)
 
 const setToday = (colName) => {
   const t = todayStr()
@@ -395,18 +417,15 @@ const parseDate = (val) => {
 
 const filteredLogs = computed(() => {
   return logs.value.filter(log => {
-    // Global search
     const matchesSearch = !searchQuery.value ||
       Object.values(log.data || {})
         .join(' ').toLowerCase().includes(searchQuery.value.toLowerCase())
 
-    // Text / select filters
     const matchesFilters = Object.entries(activeFilters.value).every(([key, value]) => {
       if (!value || value === 'all') return true
       return String(getValue(log, key)).toLowerCase().includes(String(value).toLowerCase())
     })
 
-    // Date range filters
     const matchesDates = Object.entries(dateFilters.value).every(([key, range]) => {
       const { from, to } = range
       if (!from && !to) return true
@@ -416,7 +435,6 @@ const filteredLogs = computed(() => {
       if (!cellDate) return false
       const fromDate = from ? parseDate(from) : null
       const toDate   = to   ? parseDate(to)   : null
-      // Normalize toDate to end of day for inclusive range
       if (toDate) toDate.setHours(23, 59, 59, 999)
       if (fromDate && cellDate < fromDate) return false
       if (toDate   && cellDate > toDate)   return false
@@ -442,7 +460,6 @@ const paginationTo = computed(() =>
   Math.min(currentPage.value * pageSize.value, filteredLogs.value.length)
 )
 
-// Show page numbers with ellipsis for large page counts
 const visiblePages = computed(() => {
   const total = totalPages.value
   const cur   = currentPage.value
@@ -458,7 +475,6 @@ const visiblePages = computed(() => {
   return pages
 })
 
-// Reset to page 1 when filters change
 watch([searchQuery, activeFilters, dateFilters], () => { currentPage.value = 1 }, { deep: true })
 
 /* ================= INPUT TYPE ================= */
@@ -484,7 +500,7 @@ const validate = () => {
 
 /* ================= ADD ================= */
 const openAdd = () => {
-  isEdit.value    = false
+  isEdit.value     = false
   selectedId.value = null
   fieldErrors.value = {}
   form.value = {}
@@ -494,11 +510,11 @@ const openAdd = () => {
 
 /* ================= EDIT ================= */
 const openEdit = (log) => {
-  isEdit.value     = true
-  selectedId.value = log.id
+  isEdit.value      = true
+  selectedId.value  = log.id
   fieldErrors.value = {}
-  form.value = { ...log.data }
-  showModal.value  = true
+  form.value        = { ...log.data }
+  showModal.value   = true
 }
 
 /* ================= SAVE ================= */
@@ -552,7 +568,6 @@ const closeModal = () => {
 
 /* ================= PRINT ================= */
 const printLogs = () => {
-  // Build active date range label for print header
   const dateRangeLabels = Object.entries(dateFilters.value)
     .filter(([, df]) => df.from || df.to)
     .map(([key, df]) => {
@@ -567,7 +582,6 @@ const printLogs = () => {
     year: 'numeric', month: 'long', day: 'numeric'
   })
 
-  // Collect all filtered logs (not just current page) for printing
   const allFilteredData = filteredLogs.value
 
   const colHeaders = columns.value.map(c => `<th>${c.name}</th>`).join('')
@@ -751,12 +765,14 @@ watch(() => route.params.id, async (newId, oldId) => {
   background: transparent;
   border: 1px solid #fca5a5;
   color: #ef4444;
-  padding: 6px 12px;
+  padding: 0 12px;
+  height: 44px;
   border-radius: 8px;
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s;
+  align-self: flex-end;
 }
 .btn-clear:hover { background: #fee2e2; }
 
@@ -764,13 +780,15 @@ watch(() => route.params.id, async (newId, oldId) => {
   background: #eff6ff;
   border: 1px solid #bfdbfe;
   color: #1d4ed8;
-  padding: 5px 10px;
+  padding: 0 10px;
+  height: 44px;
   border-radius: 7px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s;
+  align-self: flex-end;
 }
 .btn-today:hover { background: #dbeafe; border-color: #93c5fd; }
 
@@ -781,16 +799,129 @@ watch(() => route.params.id, async (newId, oldId) => {
   background: white;
   border: 1px solid #eef2f7;
   border-radius: 14px;
-  padding: 12px 16px;
+  padding: 12px 16px 14px;
   margin-bottom: 16px;
 }
 
 .filter-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* ===== FLOATING LABEL WRAPPER ===== */
+.fl-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.fl-input {
+  height: 44px;
+  padding: 16px 10px 4px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #111827;
+  background: white;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+  appearance: auto;
+}
+.fl-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+/* Floating label base state (centred vertically) */
+.fl-label {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  color: #9ca3af;
+  pointer-events: none;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  background: transparent;
+}
+
+/* Float UP: input focused OR has a value (non-empty placeholder trick) */
+.fl-wrap .fl-input:focus ~ .fl-label,
+.fl-wrap .fl-input:not(:placeholder-shown) ~ .fl-label {
+  top: 6px;
+  transform: translateY(0);
+  font-size: 10px;
+  font-weight: 500;
+  color: #3b82f6;
+  letter-spacing: 0.03em;
+}
+
+/* Select labels always float (selects always have a value) */
+.fl-label-select {
+  top: 6px;
+  transform: translateY(0);
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7280;
+  letter-spacing: 0.03em;
+}
+
+/* Search input — icon offset */
+.fl-search {
+  min-width: 180px;
+}
+.search-icon {
+  position: absolute;
+  left: 10px;
+  bottom: 11px;
+  color: #9ca3af;
+  font-size: 16px;
+  pointer-events: none;
+  transition: color 0.15s;
+  z-index: 1;
+}
+.fl-search:focus-within .search-icon {
+  color: #3b82f6;
+}
+.search-input {
+  height: 44px;
+  padding: 16px 10px 4px 30px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #111827;
+  background: white;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+.search-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+.search-label {
+  left: 30px;
+}
+.fl-search .search-input:focus ~ .search-label,
+.fl-search .search-input:not(:placeholder-shown) ~ .search-label {
+  top: 6px;
+  transform: translateY(0);
+  font-size: 10px;
+  font-weight: 500;
+  color: #3b82f6;
+  letter-spacing: 0.03em;
+}
+
+.fl-date   { min-width: 130px; }
+.fl-select { min-width: 140px; }
+.fl-text   { min-width: 130px; }
 
 /* Date range */
 .date-range-wrap {
@@ -798,69 +929,16 @@ watch(() => route.params.id, async (newId, oldId) => {
   flex-direction: column;
   gap: 4px;
 }
-.date-range-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
 .date-range-inputs {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 6px;
 }
 .date-sep {
   font-size: 12px;
   color: #9ca3af;
+  padding-bottom: 13px;
 }
-.date-input {
-  min-width: 130px !important;
-  cursor: pointer;
-}
-
-/* Search */
-.search-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.search-icon {
-  position: absolute;
-  left: 10px;
-  color: #9ca3af;
-  font-size: 16px;
-  pointer-events: none;
-}
-.search-input {
-  height: 36px;
-  padding: 0 12px 0 30px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #111827;
-  background: white;
-  outline: none;
-  min-width: 180px;
-  transition: border-color 0.15s;
-}
-.search-input:focus { border-color: #3b82f6; }
-
-.filter-select,
-.filter-input {
-  height: 36px;
-  padding: 0 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #111827;
-  background: white;
-  outline: none;
-  min-width: 130px;
-  transition: border-color 0.15s;
-}
-.filter-select:focus,
-.filter-input:focus { border-color: #3b82f6; }
 
 /* ===== PANEL ===== */
 .panel {
@@ -1029,6 +1107,7 @@ watch(() => route.params.id, async (newId, oldId) => {
   overflow-y: auto;
   padding: 40px 16px;
   z-index: 9999;
+  /* No @click.self — backdrop click intentionally does nothing */
 }
 
 .modal {
@@ -1117,9 +1196,10 @@ watch(() => route.params.id, async (newId, oldId) => {
   .topbar { flex-direction: column; align-items: flex-start; gap: 10px; }
   .topbar-actions { width: 100%; justify-content: flex-end; }
   .filter-bar { flex-direction: column; align-items: stretch; }
-  .search-input, .filter-select, .filter-input { width: 100%; min-width: unset; }
+  .fl-wrap, .fl-search, .fl-date, .fl-select, .fl-text { width: 100%; min-width: unset; }
+  .search-input { min-width: unset; }
   .date-range-inputs { flex-wrap: wrap; }
-  .date-input { min-width: unset !important; flex: 1; }
+  .fl-date { flex: 1; min-width: unset !important; }
   .pagination-bar { flex-direction: column; align-items: flex-start; }
   .pagination-controls { flex-wrap: wrap; }
 }

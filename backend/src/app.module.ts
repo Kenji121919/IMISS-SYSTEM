@@ -19,7 +19,7 @@ import { ModuleColumn } from './entities/module-column.entity'
       host: 'localhost',
       port: 3306,
       username: 'root',
-      password: '1234',
+      password: '',
       database: 'imisslogs_db',
       entities: [User, Profile, ModuleEntity, Log,  ModuleColumn],
       synchronize: true,
@@ -28,7 +28,7 @@ import { ModuleColumn } from './entities/module-column.entity'
     AuthModule,
     ProfilesModule,
     ModulesModule,
-    LogsModule,
+    LogsModule
   ],
 })
 export class AppModule {}
