@@ -30,7 +30,7 @@ export class ModulesService {
   async findAll(userId: number) {
     return this.repo.find({
       where: { userId },
-      relations: ['columns'] // ✅ IMPORTANT
+      //relations: ['columns'] 
     })
   }
 
@@ -38,7 +38,7 @@ export class ModulesService {
   async findOne(id: number) {
     return this.repo.findOne({
       where: { id },
-      relations: ['columns'] // ✅ IMPORTANT
+      //relations: ['columns'] 
     })
   }
 
@@ -53,7 +53,7 @@ export class ModulesService {
 
   module.name = body.name
   module.columns = body.columns
-  module.allowedProfiles = body.allowedProfiles || []  // ✅ add this
+   module.allowedProfiles = (body.allowedProfiles || []).map(Number)  
 
   return this.repo.save(module)
 }

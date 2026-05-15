@@ -49,6 +49,11 @@ const routes = [
         component: () => import('@/views/admin/ManageModules.vue')
       },
       {
+        path: 'audit-trail',
+        name: 'audit-trail',
+        component: () => import('@/views/admin/AuditTrail.vue')
+      },
+      {
         path: 'module/:id',
         name: 'dynamic-module',
         component: () => import('@/views/modules/DynamicModule.vue'),
@@ -58,7 +63,7 @@ const routes = [
   },
 
   /* =========================
-     FALLBACK (OPTIONAL BUT GOOD)
+     FALLBACK
   ========================= */
   {
     path: '/:pathMatch(.*)*',
@@ -75,8 +80,8 @@ const router = createRouter({
    AUTH GUARD
 ========================= */
 
-// Add any future public routes here
 const publicRoutes = ['login', 'register']
+const noProfileRequired = ['profiles', 'audit-trail']
 
 router.beforeEach((to) => {
   const token = localStorage.getItem('token')
@@ -94,27 +99,33 @@ router.beforeEach((to) => {
     return { name: 'login' }
   }
 
-  // If logged in but no active profile selected, go to profiles
-  if (isLoggedIn && !localStorage.getItem('activeProfile') && !switching) {
+  // If logged in but no active profile, go to profiles
+  // skip for routes that don't need an active profile
+  if (
+    isLoggedIn &&
+    !localStorage.getItem('activeProfile') &&
+    !switching &&
+    !noProfileRequired.includes(to.name)
+  ) {
     return { name: 'profiles' }
   }
 
-  // ✅ ADD THIS: Role-based redirect after profile is selected
+  // Role-based redirect after profile is selected
   if (isLoggedIn && localStorage.getItem('activeProfile')) {
     const activeProfile = JSON.parse(localStorage.getItem('activeProfile') || '{}')
-    const isAdmin = activeProfile?.team?.toLowerCase() === 'admin' || activeProfile?.name?.toLowerCase() === 'admin'
+    const isAdmin =
+      activeProfile?.team?.toLowerCase() === 'admin' ||
+      activeProfile?.name?.toLowerCase() === 'admin'
 
-    // Block non-admins from admin-only routes
-    const adminOnlyRoutes = ['dashboard-home', 'manage-profiles', 'manage-modules']
+    const adminOnlyRoutes = ['dashboard-home', 'manage-profiles', 'manage-modules', 'audit-trail']
     if (!isAdmin && adminOnlyRoutes.includes(to.name)) {
-      // Redirect to their first module, or a fallback
       const user = JSON.parse(localStorage.getItem('user') || '{}')
-      const firstModuleId = user.moduleId || null  // adjust this to however you store it
+      const firstModuleId = user.moduleId || null
 
       if (firstModuleId) {
         return { name: 'dynamic-module', params: { id: firstModuleId } }
       } else {
-        return { name: 'profiles' }  // fallback if no module found
+        return { name: 'profiles' }
       }
     }
   }

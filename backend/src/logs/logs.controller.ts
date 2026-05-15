@@ -22,6 +22,6 @@ export class LogsController {
 
   @Delete(':id')
   delete(@Param('id') id: number) {
-    return this.service.delete(Number(id))
+    return this.service.remove(Number(id))
   }
 }

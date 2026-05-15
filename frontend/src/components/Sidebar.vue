@@ -137,6 +137,7 @@ onMounted(async () => {
     { id: 'admin-0', name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, isAdmin: true, exact: true  }, 
     { id: 'admin-1', name: 'Manage Profiles', path: '/dashboard/manage-profiles', icon: User, isAdmin: true },
     { id: 'admin-2', name: 'Manage Modules',  path: '/dashboard/manage-modules',  icon: Settings, isAdmin: true },
+    { id: 'admin-3', name: 'Audit Trail', path: '/dashboard/audit-trail', icon: Settings, isAdmin: true },
     ...modules.map(mod => ({
       id: mod.id,
       name: mod.name,

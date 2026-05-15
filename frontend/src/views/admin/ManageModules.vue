@@ -149,7 +149,7 @@
             <div
               v-for="p in profiles"
               :key="p.id"
-              :class="['chip', { active: editModule.allowedProfiles?.map(String).includes(String(p.id)) }]"
+              :class="['chip', { active: editModule.allowedProfiles?.map(Number).includes(Number(p.id)) }]"
               @click="toggleProfile(p.id)"
             >
               <span v-if="editModule.allowedProfiles?.includes(p.id)" class="chip-check">✓</span>
@@ -307,7 +307,7 @@ const openEdit = (m) => {
           optionsInput: Array.isArray(col.options) ? col.options.join(',') : ''
         }))
       : [],
-    allowedProfiles: m.allowedProfiles?.map(p => String(typeof p === 'object' ? p.id : p)) || []
+    allowedProfiles: m.allowedProfiles?.map(p => Number(typeof p === 'object' ? p.id : p)) || []
   }
 }
 
@@ -336,9 +336,8 @@ const removeEditColumn = (i) => {
 /* ================= PROFILES ================= */
 const toggleProfile = (id) => {
   const list = editModule.value.allowedProfiles
-  const strId = String(id)
-  const idx = list.findIndex(i => String(i) === strId)
-  if (idx === -1) list.push(strId)
+  const idx = list.findIndex(i => Number(i) === Number(id))
+  if (idx === -1) list.push(Number(id))
   else list.splice(idx, 1)
 }
 

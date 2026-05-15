@@ -11,6 +11,8 @@ import { ProfilesModule } from './profiles/profiles.module'
 import { ModulesModule } from './module/modules.module'
 import { LogsModule } from './logs/logs.module'
 import { ModuleColumn } from './entities/module-column.entity'
+import { AuditLog } from './entities/audit-log.entity'
+import { AuditModule } from './audit/audit.module'
 
 @Module({
   imports: [
@@ -21,14 +23,15 @@ import { ModuleColumn } from './entities/module-column.entity'
       username: 'root',
       password: '',
       database: 'imisslogs_db',
-      entities: [User, Profile, ModuleEntity, Log,  ModuleColumn],
-      synchronize: true,
+      entities: [User, Profile, ModuleEntity, Log,  ModuleColumn, AuditLog],
+      synchronize: false,
     }),
 
     AuthModule,
     ProfilesModule,
     ModulesModule,
-    LogsModule
+    LogsModule,
+    AuditModule
   ],
 })
 export class AppModule {}
