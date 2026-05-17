@@ -56,9 +56,8 @@
                     v-model="dateFilters[col.name].from"
                     class="fl-input"
                     :id="`date-from-${col.name}`"
-                    placeholder=" "
                   />
-                  <label :for="`date-from-${col.name}`" class="fl-label">From date</label>
+                  <label :for="`date-from-${col.name}`" class="fl-label">From {{ col.name }}</label>
                 </div>
 
                 <span class="date-sep">→</span>
@@ -69,9 +68,8 @@
                     v-model="dateFilters[col.name].to"
                     class="fl-input"
                     :id="`date-to-${col.name}`"
-                    placeholder=" "
                   />
-                  <label :for="`date-to-${col.name}`" class="fl-label">To date</label>
+                  <label :for="`date-to-${col.name}`" class="fl-label">To {{ col.name }}</label>
                 </div>
 
                 <button
@@ -211,10 +209,11 @@
       </div>
     </div>
 
+    <!-- ================= PLACEHOLDER (no columns yet) ================= -->
     <div class="panel placeholder-panel" v-else>
       <div class="placeholder-content">
         <div class="placeholder-icon">☰</div>
-        <p>Loading module…</p>
+        <p>{{ module?.name || 'Loading module…' }}</p>
       </div>
     </div>
 
@@ -246,7 +245,7 @@
               v-model="form[col.name]"
               :class="['form-input', { 'input-error': fieldErrors[col.name] }]"
             >
-              <option value="">Select option</option>
+              <option value="" disabled selected>Select option</option>
               <option v-for="opt in col.options" :key="opt" :value="opt">{{ opt }}</option>
             </select>
 
@@ -321,8 +320,8 @@ const dateFilters = ref({})
 const saving = ref(false)
 
 /* ================= SORT ================= */
-const sortKey = ref('')   // column name or ''
-const sortDir = ref('asc') // 'asc' | 'desc'
+const sortKey = ref('')
+const sortDir = ref('asc')
 
 const setSort = (colName) => {
   if (sortKey.value === colName) {
@@ -475,7 +474,6 @@ const filteredLogs = computed(() => {
     return matchesSearch && matchesFilters && matchesDates
   })
 
-  // Apply sort
   if (!sortKey.value) return base
 
   const col = columns.value.find(c => c.name === sortKey.value)
@@ -485,21 +483,17 @@ const filteredLogs = computed(() => {
     const aVal = getValue(a, sortKey.value)
     const bVal = getValue(b, sortKey.value)
 
-    // Treat missing values as last always
     if (aVal === '-' || aVal == null) return 1
     if (bVal === '-' || bVal == null) return -1
 
-    // Numeric sort for int columns
     if (col?.type === 'int') {
       return (Number(aVal) - Number(bVal)) * dir
     }
 
-    // Date/time sort
     if (col?.type === 'date' || col?.type === 'time') {
       return (new Date(aVal) - new Date(bVal)) * dir
     }
 
-    // Default: locale string sort
     return String(aVal).localeCompare(String(bVal), undefined, { sensitivity: 'base' }) * dir
   })
 })
@@ -909,18 +903,39 @@ watch(() => route.params.id, async (newId, oldId) => {
   font-size: 13px;
   color: #9ca3af;
   pointer-events: none;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   white-space: nowrap;
   background: transparent;
 }
 
-.fl-wrap .fl-input:focus ~ .fl-label,
-.fl-wrap .fl-input:not(:placeholder-shown) ~ .fl-label {
+/* Float label on focus (all inputs) */
+.fl-wrap .fl-input:focus ~ .fl-label {
   top: 6px;
   transform: translateY(0);
   font-size: 10px;
   font-weight: 500;
   color: #3b82f6;
+  letter-spacing: 0.03em;
+}
+
+/* Float label when text/select inputs have content (via placeholder trick) */
+.fl-wrap .fl-input:not(:placeholder-shown) ~ .fl-label {
+  top: 6px;
+  transform: translateY(0);
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7280;
+  letter-spacing: 0.03em;
+}
+
+/* Float label when date/time inputs have a value (browser sets :valid when filled) */
+.fl-wrap input[type="date"]:valid ~ .fl-label,
+.fl-wrap input[type="time"]:valid ~ .fl-label {
+  top: 6px;
+  transform: translateY(0);
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7280;
   letter-spacing: 0.03em;
 }
 

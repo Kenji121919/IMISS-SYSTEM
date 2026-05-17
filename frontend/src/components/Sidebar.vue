@@ -101,8 +101,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import api from '@/api/axios'
-import { Menu, LogOut, User, Settings, LayoutGrid, LayoutDashboard } from 'lucide-vue-next'
-
+import { Menu, LogOut, User, Settings, LayoutGrid, LayoutDashboard, BarChart2 } from 'lucide-vue-next'
 defineProps({ collapsed: Boolean })
 defineEmits(['toggle'])
 
@@ -132,38 +131,42 @@ onMounted(async () => {
     const res = await api.get(`/modules/${user.id}`)
     const modules = res.data || []
 
-    if (isAdmin) {
+if (isAdmin) {
   menuItems.value = [
-    { id: 'admin-0', name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, isAdmin: true, exact: true  }, 
-    { id: 'admin-1', name: 'Manage Profiles', path: '/dashboard/manage-profiles', icon: User, isAdmin: true },
-    { id: 'admin-2', name: 'Manage Modules',  path: '/dashboard/manage-modules',  icon: Settings, isAdmin: true },
-    { id: 'admin-3', name: 'Audit Trail', path: '/dashboard/audit-trail', icon: Settings, isAdmin: true },
+    { id: 'admin-0', name: 'Dashboard',       path: '/dashboard',                  icon: LayoutDashboard, isAdmin: true, exact: true },
+    { id: 'admin-a', name: 'Analytics',        path: '/dashboard/analytics',        icon: BarChart2,       isAdmin: true },
+    { id: 'admin-1', name: 'Manage Profiles',  path: '/dashboard/manage-profiles',  icon: User,            isAdmin: true },
+    { id: 'admin-2', name: 'Manage Modules',   path: '/dashboard/manage-modules',   icon: Settings,        isAdmin: true },
+    { id: 'admin-3', name: 'Audit Trail',      path: '/dashboard/audit-trail',      icon: Settings,        isAdmin: true },
     ...modules.map(mod => ({
-      id: mod.id,
-      name: mod.name,
-      path: `/dashboard/module/${mod.id}`,
-      icon: LayoutGrid,
+      id:      mod.id,
+      name:    mod.name,
+      path:    `/dashboard/module/${mod.id}`,
+      icon:    LayoutGrid,
       isAdmin: false
     }))
   ]
 } else {
-      menuItems.value = modules
-        .filter(mod => {
-          try {
-            const allowed = typeof mod.allowedProfiles === 'string'
-              ? JSON.parse(mod.allowedProfiles)
-              : mod.allowedProfiles || []
-            return allowed.includes(activeProfile.id)
-          } catch { return false }
-        })
-        .map(mod => ({
-          id: mod.id,
-          name: mod.name,
-          path: `/dashboard/module/${mod.id}`,
-          icon: LayoutGrid,
-          isAdmin: false
-        }))
-    }
+  menuItems.value = [
+    { id: 'user-dash', name: 'My Dashboard', path: '/dashboard/my-dashboard', icon: LayoutDashboard, isAdmin: false },
+    ...modules
+      .filter(mod => {
+        try {
+          const allowed = typeof mod.allowedProfiles === 'string'
+            ? JSON.parse(mod.allowedProfiles)
+            : mod.allowedProfiles || []
+          return allowed.includes(activeProfile.id)
+        } catch { return false }
+      })
+      .map(mod => ({
+        id:      mod.id,
+        name:    mod.name,
+        path:    `/dashboard/module/${mod.id}`,
+        icon:    LayoutGrid,
+        isAdmin: false
+      }))
+  ]
+}
   } catch (err) {
     console.error('Sidebar load error:', err)
     menuItems.value = []

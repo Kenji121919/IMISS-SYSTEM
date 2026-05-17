@@ -4,7 +4,6 @@ import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import ProfilesView from '../views/ProfilesView.vue'
 
-// Dashboard Layout
 import DashboardLayout from '../views/dashboard/Dashboard.vue'
 
 const routes = [
@@ -37,6 +36,18 @@ const routes = [
         path: '',
         name: 'dashboard-home',
         component: () => import('@/views/dashboard/Home.vue')
+      },
+      {
+        // Admin-only dynamic dashboard (auto-charts across all modules)
+        path: 'analytics',
+        name: 'dynamic-dashboard',
+        component: () => import('@/views/admin/dynamicdshbrd.vue')
+      },
+      {
+        // Per-user dashboard (tabs per assigned module)
+        path: 'my-dashboard',
+        name: 'user-dashboard',
+        component: () => import('@/views/dashboard/UserDashboard.vue')
       },
       {
         path: 'manage-profiles',
@@ -83,24 +94,23 @@ const router = createRouter({
 const publicRoutes = ['login', 'register']
 const noProfileRequired = ['profiles', 'audit-trail']
 
+// Routes only admins can access
+const adminOnlyRoutes = ['dashboard-home', 'dynamic-dashboard', 'manage-profiles', 'manage-modules', 'audit-trail']
+
 router.beforeEach((to) => {
   const token = localStorage.getItem('token')
   const switching = localStorage.getItem('switchingProfile')
   const isLoggedIn = !!token && token !== 'null'
 
-  // Allow profile page always (even during switch)
   if (to.name === 'profiles') {
     localStorage.removeItem('switchingProfile')
     return true
   }
 
-  // Allow public routes without auth
   if (!isLoggedIn && !publicRoutes.includes(to.name)) {
     return { name: 'login' }
   }
 
-  // If logged in but no active profile, go to profiles
-  // skip for routes that don't need an active profile
   if (
     isLoggedIn &&
     !localStorage.getItem('activeProfile') &&
@@ -110,23 +120,23 @@ router.beforeEach((to) => {
     return { name: 'profiles' }
   }
 
-  // Role-based redirect after profile is selected
   if (isLoggedIn && localStorage.getItem('activeProfile')) {
     const activeProfile = JSON.parse(localStorage.getItem('activeProfile') || '{}')
     const isAdmin =
       activeProfile?.team?.toLowerCase() === 'admin' ||
       activeProfile?.name?.toLowerCase() === 'admin'
 
-    const adminOnlyRoutes = ['dashboard-home', 'manage-profiles', 'manage-modules', 'audit-trail']
     if (!isAdmin && adminOnlyRoutes.includes(to.name)) {
       const user = JSON.parse(localStorage.getItem('user') || '{}')
       const firstModuleId = user.moduleId || null
+      return firstModuleId
+        ? { name: 'dynamic-module', params: { id: firstModuleId } }
+        : { name: 'profiles' }
+    }
 
-      if (firstModuleId) {
-        return { name: 'dynamic-module', params: { id: firstModuleId } }
-      } else {
-        return { name: 'profiles' }
-      }
+    // Non-admins hitting dashboard root → send to their own dashboard
+    if (!isAdmin && to.name === 'dashboard-home') {
+      return { name: 'user-dashboard' }
     }
   }
 
