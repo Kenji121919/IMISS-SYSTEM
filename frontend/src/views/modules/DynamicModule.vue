@@ -62,7 +62,7 @@
             <!-- DATE RANGE FILTER -->
             <template v-if="col.type === 'date'">
               <div class="date-picker-wrap">
-                <div class="fl-label-static">{{ col.name }}</div>
+                <div class="fl-label-static"></div>
                 <button
                   :class="['date-trigger', { active: dateFilters[col.name]?.from || dateFilters[col.name]?.to }]"
                   @click="toggleDatePicker(col.name)"
@@ -109,7 +109,7 @@
                 class="fl-input fl-input-select"
                 :id="`filter-select-${col.name}`"
               >
-                <option value="all">All</option>
+                
                 <option v-for="opt in col.options" :key="opt" :value="opt">{{ opt }}</option>
               </select>
               <label :for="`filter-select-${col.name}`" class="fl-label fl-label-select">{{ col.name }}</label>
