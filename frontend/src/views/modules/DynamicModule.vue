@@ -19,109 +19,138 @@
         <button class="btn-outline" @click="printLogs" title="Print logs">
           <span class="btn-icon-left">🖨</span> Print
         </button>
+
+        <!-- FILTER TOGGLE BUTTON -->
+        <button
+          :class="['btn-filter', { active: showFilters || activeFilterCount > 0 }]"
+          @click="showFilters = !showFilters"
+          title="Toggle filters"
+        >
+          <span class="btn-icon-left">⚙</span>
+          Filters
+          <span v-if="activeFilterCount > 0" class="filter-badge">{{ activeFilterCount }}</span>
+        </button>
+
         <button class="btn-primary" @click="openAdd">
           <span class="btn-icon-left">+</span> Add log
         </button>
       </div>
     </div>
 
-    <!-- ================= FILTER BAR ================= -->
-    <div class="filter-bar-panel" v-if="columns.length">
-      <div class="filter-bar">
+    <!-- ================= FILTER PANEL (collapsible) ================= -->
+    <transition name="filter-slide">
+      <div v-if="showFilters && columns.length" class="filter-bar-panel">
+        <div class="filter-bar">
 
-        <!-- GLOBAL SEARCH -->
-        <div class="fl-wrap fl-search">
-          <span class="search-icon">⌕</span>
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder=" "
-            class="search-input"
-            id="global-search"
-          />
-          <label for="global-search" class="fl-label search-label">Search logs…</label>
-        </div>
-
-        <!-- COLUMN FILTERS -->
-        <template v-for="col in columns.filter(c => c.filterable)" :key="col.name">
-
-          <!-- DATE RANGE FILTER -->
-          <template v-if="col.type === 'date'">
-            <div class="date-range-wrap">
-              <div class="date-range-inputs">
-
-                <div class="fl-wrap fl-date">
-                  <input
-                    type="date"
-                    v-model="dateFilters[col.name].from"
-                    class="fl-input"
-                    :id="`date-from-${col.name}`"
-                  />
-                  <label :for="`date-from-${col.name}`" class="fl-label">From {{ col.name }}</label>
-                </div>
-
-                <span class="date-sep">→</span>
-
-                <div class="fl-wrap fl-date">
-                  <input
-                    type="date"
-                    v-model="dateFilters[col.name].to"
-                    class="fl-input"
-                    :id="`date-to-${col.name}`"
-                  />
-                  <label :for="`date-to-${col.name}`" class="fl-label">To {{ col.name }}</label>
-                </div>
-
-                <button
-                  class="btn-today"
-                  @click="setToday(col.name)"
-                  title="Set to today"
-                >Today</button>
-              </div>
-            </div>
-          </template>
-
-          <!-- SELECT FILTER -->
-          <div v-else-if="col.type === 'select'" class="fl-wrap fl-select">
-            <select
-              v-model="activeFilters[col.name]"
-              class="fl-input"
-              :id="`filter-select-${col.name}`"
-            >
-              <option value="all">All</option>
-              <option v-for="opt in col.options" :key="opt" :value="opt">{{ opt }}</option>
-            </select>
-            <label :for="`filter-select-${col.name}`" class="fl-label fl-label-select">{{ col.name }}</label>
-          </div>
-
-          <!-- TEXT FILTER -->
-          <div v-else class="fl-wrap fl-text">
+          <!-- GLOBAL SEARCH -->
+          <div class="fl-wrap fl-search">
+            <span class="search-icon">⌕</span>
             <input
-              v-model="activeFilters[col.name]"
+              v-model="searchQuery"
               type="text"
               placeholder=" "
-              class="fl-input"
-              :id="`filter-text-${col.name}`"
+              class="search-input"
+              id="global-search"
             />
-            <label :for="`filter-text-${col.name}`" class="fl-label">{{ col.name }}</label>
+            <label for="global-search" class="fl-label search-label">Search logs…</label>
+            <button v-if="searchQuery" class="fl-clear-btn" @click="searchQuery = ''" title="Clear" type="button">✕</button>
           </div>
 
-        </template>
+          <!-- COLUMN FILTERS -->
+          <template v-for="col in columns.filter(c => c.filterable)" :key="col.name">
 
-        <!-- CLEAR FILTERS -->
-        <button
-          v-if="hasActiveFilters"
-          class="btn-clear"
-          @click="clearFilters"
-        >✕ Clear</button>
+            <!-- DATE RANGE FILTER -->
+            <template v-if="col.type === 'date'">
+              <div class="date-picker-wrap">
+                <div class="fl-label-static">{{ col.name }}</div>
+                <button
+                  :class="['date-trigger', { active: dateFilters[col.name]?.from || dateFilters[col.name]?.to }]"
+                  @click="toggleDatePicker(col.name)"
+                  type="button"
+                >
+                  <span class="date-trigger-label">{{ dateRangeLabel(col.name) }}</span>
+                  <span v-if="dateFilters[col.name]?.from || dateFilters[col.name]?.to" class="date-trigger-clear" @click.stop="clearDateFilter(col.name)" title="Clear">✕</span>
+                  <span v-else class="date-trigger-caret">▾</span>
+                </button>
 
+                <div v-if="openDatePicker === col.name" class="date-dropdown">
+                  <div class="date-dropdown-row">
+                    <div class="date-dropdown-field">
+                      <label class="date-dropdown-label">From</label>
+                      <input
+                        type="date"
+                        v-model="dateFilters[col.name].from"
+                        class="date-dropdown-input"
+                        :max="dateFilters[col.name].to || undefined"
+                      />
+                    </div>
+                    <div class="date-dropdown-field">
+                      <label class="date-dropdown-label">To</label>
+                      <input
+                        type="date"
+                        v-model="dateFilters[col.name].to"
+                        class="date-dropdown-input"
+                        :min="dateFilters[col.name].from || undefined"
+                      />
+                    </div>
+                  </div>
+                  <div class="date-dropdown-footer">
+                    <button class="btn-shortcut" @click="setToday(col.name)">Today</button>
+                    <button class="btn-shortcut" @click="setThisMonth(col.name)">This month</button>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- SELECT FILTER -->
+            <div v-else-if="col.type === 'select'" class="fl-wrap fl-select">
+              <select
+                v-model="activeFilters[col.name]"
+                class="fl-input fl-input-select"
+                :id="`filter-select-${col.name}`"
+              >
+                <option value="all">All</option>
+                <option v-for="opt in col.options" :key="opt" :value="opt">{{ opt }}</option>
+              </select>
+              <label :for="`filter-select-${col.name}`" class="fl-label fl-label-select">{{ col.name }}</label>
+              <button
+                v-if="activeFilters[col.name] && activeFilters[col.name] !== 'all'"
+                class="select-icon-btn"
+                @click.stop="activeFilters[col.name] = 'all'"
+                title="Clear"
+                type="button"
+              >✕</button>
+              <span v-else class="select-caret" aria-hidden="true">▾</span>
+            </div>
+
+            <!-- TEXT FILTER -->
+            <div v-else class="fl-wrap fl-text">
+              <input
+                v-model="activeFilters[col.name]"
+                type="text"
+                placeholder=" "
+                class="fl-input"
+                :id="`filter-text-${col.name}`"
+              />
+              <label :for="`filter-text-${col.name}`" class="fl-label">{{ col.name }}</label>
+              <button v-if="activeFilters[col.name]" class="fl-clear-btn" @click="activeFilters[col.name] = ''" title="Clear" type="button">✕</button>
+            </div>
+
+          </template>
+
+        </div>
+
+        <!-- FILTER PANEL FOOTER -->
+        <div class="filter-footer">
+          <button v-if="hasActiveFilters" class="btn-clear" @click="clearFilters">✕ Clear filters</button>
+          <button class="btn-ghost-sm" @click="showFilters = false">Close</button>
+        </div>
       </div>
-    </div>
+    </transition>
 
     <!-- ================= TABLE ================= -->
     <div class="panel" v-if="columns.length">
       <div class="table-wrapper">
-
         <table class="table" id="print-table">
           <thead>
             <tr>
@@ -162,7 +191,6 @@
                 </span>
                 <span v-else class="cell-empty">—</span>
               </td>
-
               <td class="td-actions no-print">
                 <button class="btn-icon-action edit" @click="openEdit(log)" title="Edit">✏</button>
                 <button class="btn-icon-action danger" @click="askDelete(log)" title="Delete">🗑</button>
@@ -170,7 +198,6 @@
             </tr>
           </tbody>
         </table>
-
       </div>
 
       <!-- ================= PAGINATION ================= -->
@@ -209,7 +236,7 @@
       </div>
     </div>
 
-    <!-- ================= PLACEHOLDER (no columns yet) ================= -->
+    <!-- ================= PLACEHOLDER ================= -->
     <div class="panel placeholder-panel" v-else>
       <div class="placeholder-content">
         <div class="placeholder-icon">☰</div>
@@ -220,7 +247,6 @@
     <!-- ================= ADD / EDIT MODAL ================= -->
     <div v-if="showModal" class="modal-backdrop">
       <div class="modal">
-
         <div class="modal-header">
           <div>
             <h3>{{ isEdit ? 'Edit log' : 'Add log' }}</h3>
@@ -230,11 +256,7 @@
         </div>
 
         <div class="modal-body">
-          <div
-            v-for="col in columns"
-            :key="col.name"
-            class="form-group"
-          >
+          <div v-for="col in columns" :key="col.name" class="form-group">
             <label class="form-label">
               {{ col.name }}
               <span v-if="col.required" class="required-star">*</span>
@@ -270,28 +292,23 @@
             <span v-else>{{ isEdit ? 'Save changes' : 'Add log' }}</span>
           </button>
         </div>
-
       </div>
     </div>
 
     <!-- ================= DELETE MODAL ================= -->
     <div v-if="showDelete" class="modal-backdrop">
       <div class="modal">
-
         <div class="modal-header danger-header">
           <h3>Delete log</h3>
           <p>This action cannot be undone</p>
         </div>
-
         <div class="modal-body">
           <p class="delete-msg">Are you sure you want to delete this log entry?</p>
         </div>
-
         <div class="modal-footer">
           <button class="btn-ghost" @click="showDelete = false">Cancel</button>
           <button class="btn-danger" @click="deleteLog">Delete</button>
         </div>
-
       </div>
     </div>
 
@@ -305,11 +322,24 @@ import api from '@/api/axios'
 
 const route = useRoute()
 
+/* ================= CLICK OUTSIDE DIRECTIVE ================= */
+const vClickOutside = {
+  mounted(el, binding) {
+    el._clickOutside = (e) => { if (!el.contains(e.target)) binding.value(e) }
+    document.addEventListener('click', el._clickOutside)
+  },
+  unmounted(el) {
+    document.removeEventListener('click', el._clickOutside)
+  }
+}
+
+
 const module = ref(null)
 const columns = ref([])
 const logs = ref([])
 const showModal = ref(false)
 const showDelete = ref(false)
+const showFilters = ref(false)   // ← NEW: controls filter panel visibility
 const isEdit = ref(false)
 const selectedId = ref(null)
 const form = ref({})
@@ -356,14 +386,60 @@ const safeParse = (val) => {
   try { return JSON.parse(val) } catch { return [] }
 }
 
-/* ================= TODAY HELPER ================= */
+/* ================= DATE PICKER ================= */
+const openDatePicker = ref(null)
+
 const todayStr = () => new Date().toISOString().slice(0, 10)
+
+const toggleDatePicker = (colName) => {
+  openDatePicker.value = openDatePicker.value === colName ? null : colName
+}
+
+const closeDatePicker = (colName) => {
+  if (openDatePicker.value === colName) openDatePicker.value = null
+}
+
+const clearDateFilter = (colName) => {
+  dateFilters.value[colName] = { from: '', to: '' }
+  openDatePicker.value = null
+  currentPage.value = 1
+}
 
 const setToday = (colName) => {
   const t = todayStr()
   dateFilters.value[colName].from = t
   dateFilters.value[colName].to   = t
   currentPage.value = 1
+}
+
+const setThisMonth = (colName) => {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const lastDay = new Date(y, now.getMonth() + 1, 0).getDate()
+  dateFilters.value[colName].from = `${y}-${m}-01`
+  dateFilters.value[colName].to   = `${y}-${m}-${lastDay}`
+  currentPage.value = 1
+}
+
+const dateRangeLabel = (colName) => {
+  const { from, to } = dateFilters.value[colName] || {}
+  if (from && to)   return `${from} → ${to}`
+  if (from)         return `From ${from}`
+  if (to)           return `Until ${to}`
+  return colName
+}
+
+/* ================= FILTER INIT ================= */
+const initFilters = () => {
+  columns.value.forEach(col => {
+    if (!col.filterable) return
+    if (col.type === 'date') {
+      dateFilters.value[col.name] = { from: '', to: '' }
+    } else {
+      activeFilters.value[col.name] = ''
+    }
+  })
 }
 
 /* ================= LOAD MODULE ================= */
@@ -379,15 +455,7 @@ const loadModule = async () => {
 
   activeFilters.value = {}
   dateFilters.value   = {}
-  columns.value.forEach(col => {
-    if (col.filterable) {
-      if (col.type === 'date') {
-        dateFilters.value[col.name] = { from: '', to: '' }
-      } else {
-        activeFilters.value[col.name] = ''
-      }
-    }
-  })
+  initFilters()
 }
 
 /* ================= NORMALIZE LOG VALUES ================= */
@@ -418,24 +486,22 @@ const loadAll = async () => {
 const getValue = (log, columnName) => log.data?.[columnName] ?? '-'
 
 /* ================= FILTERS ================= */
-const hasActiveFilters = computed(() => {
-  const hasText = !!searchQuery.value
-  const hasCol  = Object.values(activeFilters.value).some(v => v && v !== 'all')
-  const hasDate = Object.values(dateFilters.value).some(df => df.from || df.to)
-  return hasText || hasCol || hasDate
+
+// Single source of truth for filter state — used by both hasActiveFilters and the badge count
+const activeFilterCount = computed(() => {
+  let count = 0
+  if (searchQuery.value) count++
+  Object.values(activeFilters.value).forEach(v => { if (v && v !== 'all') count++ })
+  Object.values(dateFilters.value).forEach(df => { if (df.from || df.to) count++ })
+  return count
 })
+
+// Derived from activeFilterCount — no duplicate iteration needed
+const hasActiveFilters = computed(() => activeFilterCount.value > 0)
 
 const clearFilters = () => {
   searchQuery.value = ''
-  columns.value.forEach(col => {
-    if (col.filterable) {
-      if (col.type === 'date') {
-        dateFilters.value[col.name] = { from: '', to: '' }
-      } else {
-        activeFilters.value[col.name] = ''
-      }
-    }
-  })
+  initFilters()
   currentPage.value = 1
 }
 
@@ -486,13 +552,8 @@ const filteredLogs = computed(() => {
     if (aVal === '-' || aVal == null) return 1
     if (bVal === '-' || bVal == null) return -1
 
-    if (col?.type === 'int') {
-      return (Number(aVal) - Number(bVal)) * dir
-    }
-
-    if (col?.type === 'date' || col?.type === 'time') {
-      return (new Date(aVal) - new Date(bVal)) * dir
-    }
+    if (col?.type === 'int') return (Number(aVal) - Number(bVal)) * dir
+    if (col?.type === 'date' || col?.type === 'time') return (new Date(aVal) - new Date(bVal)) * dir
 
     return String(aVal).localeCompare(String(bVal), undefined, { sensitivity: 'base' }) * dir
   })
@@ -636,7 +697,6 @@ const printLogs = () => {
   })
 
   const allFilteredData = filteredLogs.value
-
   const colHeaders = columns.value.map(c => `<th>${c.name}</th>`).join('')
   const rows = allFilteredData.map(log =>
     `<tr>${columns.value.map(col => {
@@ -668,10 +728,7 @@ const printLogs = () => {
         td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
         tbody tr:nth-child(even) { background: #f9fafb; }
         .footer { margin-top: 16px; font-size: 11px; color: #9ca3af; text-align: right; }
-        @media print {
-          body { padding: 0; }
-          @page { margin: 15mm; }
-        }
+        @media print { body { padding: 0; } @page { margin: 15mm; } }
       </style>
     </head>
     <body>
@@ -743,7 +800,7 @@ watch(() => route.params.id, async (newId, oldId) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 .topbar h1 { font-size: 20px; font-weight: 600; margin: 0; }
 .topbar p  { font-size: 13px; color: #6b7280; margin: 2px 0 0; }
@@ -783,82 +840,64 @@ watch(() => route.params.id, async (newId, oldId) => {
 }
 .btn-outline:hover { background: #f9fafb; border-color: #d1d5db; }
 
-.btn-ghost {
-  background: transparent;
+/* ===== FILTER TOGGLE BUTTON ===== */
+.btn-filter {
+  background: white;
+  color: #374151;
   border: 1px solid #e5e7eb;
-  color: #6b7280;
-  padding: 8px 14px;
-  border-radius: 10px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.btn-ghost:hover { background: #f3f4f6; }
-
-.btn-ghost-sm {
-  background: transparent;
-  border: none;
-  color: #9ca3af;
-  font-size: 16px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  flex-shrink: 0;
-}
-.btn-ghost-sm:hover { background: #f3f4f6; color: #374151; }
-
-.btn-danger {
-  background: #ef4444;
-  color: white;
-  border: none;
   padding: 9px 16px;
   border-radius: 10px;
   font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.btn-danger:hover { background: #dc2626; }
-
-.btn-clear {
-  background: transparent;
-  border: 1px solid #fca5a5;
-  color: #ef4444;
-  padding: 0 12px;
-  height: 44px;
-  border-radius: 8px;
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s;
-  align-self: flex-end;
-}
-.btn-clear:hover { background: #fee2e2; }
-
-.btn-today {
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1d4ed8;
-  padding: 0 10px;
-  height: 44px;
-  border-radius: 7px;
-  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   transition: all 0.15s;
-  align-self: flex-end;
+  position: relative;
 }
-.btn-today:hover { background: #dbeafe; border-color: #93c5fd; }
+.btn-filter:hover { background: #f9fafb; border-color: #d1d5db; }
+.btn-filter.active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
 
-.btn-icon-left { font-size: 16px; line-height: 1; }
+.filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: #1d4ed8;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
 
-/* ===== FILTER BAR PANEL ===== */
+
+/* ===== FILTER PANEL (collapsible) ===== */
 .filter-bar-panel {
   background: white;
   border: 1px solid #eef2f7;
   border-radius: 14px;
-  padding: 12px 16px 14px;
+  padding: 14px 16px 12px;
   margin-bottom: 16px;
+}
+
+/* slide transition */
+.filter-slide-enter-active,
+.filter-slide-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+.filter-slide-enter-from,
+.filter-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 
 .filter-bar {
@@ -866,6 +905,20 @@ watch(() => route.params.id, async (newId, oldId) => {
   align-items: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.filter-bar > * {
+  flex: 1 1 140px;
+}
+
+.filter-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
 }
 
 /* ===== FLOATING LABEL WRAPPER ===== */
@@ -908,7 +961,6 @@ watch(() => route.params.id, async (newId, oldId) => {
   background: transparent;
 }
 
-/* Float label on focus (all inputs) */
 .fl-wrap .fl-input:focus ~ .fl-label {
   top: 6px;
   transform: translateY(0);
@@ -918,7 +970,6 @@ watch(() => route.params.id, async (newId, oldId) => {
   letter-spacing: 0.03em;
 }
 
-/* Float label when text/select inputs have content (via placeholder trick) */
 .fl-wrap .fl-input:not(:placeholder-shown) ~ .fl-label {
   top: 6px;
   transform: translateY(0);
@@ -928,7 +979,6 @@ watch(() => route.params.id, async (newId, oldId) => {
   letter-spacing: 0.03em;
 }
 
-/* Float label when date/time inputs have a value (browser sets :valid when filled) */
 .fl-wrap input[type="date"]:valid ~ .fl-label,
 .fl-wrap input[type="time"]:valid ~ .fl-label {
   top: 6px;
@@ -948,7 +998,7 @@ watch(() => route.params.id, async (newId, oldId) => {
   letter-spacing: 0.03em;
 }
 
-.fl-search { min-width: 180px; }
+.fl-search { min-width: 0; flex: 2 1 200px; }
 .search-icon {
   position: absolute;
   left: 10px;
@@ -988,13 +1038,235 @@ watch(() => route.params.id, async (newId, oldId) => {
   letter-spacing: 0.03em;
 }
 
-.fl-date   { min-width: 130px; }
-.fl-select { min-width: 140px; }
-.fl-text   { min-width: 130px; }
+.fl-select { min-width: 0; }
+.fl-text   { min-width: 0; }
 
-.date-range-wrap { display: flex; flex-direction: column; gap: 4px; }
-.date-range-inputs { display: flex; align-items: flex-end; gap: 6px; }
-.date-sep { font-size: 12px; color: #9ca3af; padding-bottom: 13px; }
+/* ===== DATE PICKER DROPDOWN ===== */
+.date-picker-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fl-label-static {
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7280;
+  letter-spacing: 0.03em;
+  padding-left: 2px;
+}
+
+.date-trigger {
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  color: #111827;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.date-trigger:hover { border-color: #d1d5db; background: #f9fafb; }
+.date-trigger.active { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); color: #1d4ed8; }
+
+.date-trigger-icon { font-size: 14px; flex-shrink: 0; }
+.date-trigger-label { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.date-trigger-caret { font-size: 11px; color: #9ca3af; flex-shrink: 0; }
+.date-trigger-clear {
+  font-size: 11px;
+  color: #9ca3af;
+  flex-shrink: 0;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.date-trigger-clear:hover { color: #ef4444; }
+
+/* clear button inside text/search/select filters */
+.fl-clear-btn {
+  position: absolute;
+  right: 8px;
+  bottom: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: #9ca3af;
+  line-height: 1;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+  z-index: 2;
+}
+.fl-clear-btn:hover { color: #ef4444; }
+
+/* nudge inputs left so text doesn't hide under the ✕ */
+.fl-wrap:has(.fl-clear-btn) .fl-input,
+.fl-wrap:has(.fl-clear-btn) .search-input {
+  padding-right: 26px;
+}
+
+/* hide native select arrow; our custom icon replaces it */
+.fl-input-select {
+  appearance: none;
+  padding-right: 28px;
+}
+
+.select-icon-btn,
+.select-caret {
+  position: absolute;
+  right: 8px;
+  bottom: 10px;
+  pointer-events: none;
+  font-size: 11px;
+  color: #9ca3af;
+  line-height: 1;
+}
+
+.select-icon-btn {
+  pointer-events: all;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+  z-index: 2;
+}
+.select-icon-btn:hover { color: #ef4444; }
+
+.date-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.date-dropdown-row {
+  display: flex;
+  gap: 8px;
+}
+
+.date-dropdown-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.date-dropdown-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7280;
+  letter-spacing: 0.03em;
+}
+
+.date-dropdown-input {
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  font-size: 12px;
+  color: #111827;
+  background: white;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.date-dropdown-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+.date-dropdown-footer {
+  display: flex;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.btn-shortcut {
+  flex: 1;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  color: #374151;
+  padding: 5px 0;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-shortcut:hover { background: #e5e7eb; }
+
+/* ===== BUTTONS (shared) ===== */
+.btn-ghost {
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-ghost:hover { background: #f3f4f6; }
+
+.btn-ghost-sm {
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition: all 0.15s;
+}
+.btn-ghost-sm:hover { background: #f3f4f6; color: #374151; }
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-danger:hover { background: #dc2626; }
+
+.btn-clear {
+  background: transparent;
+  border: 1px solid #fca5a5;
+  color: #ef4444;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.btn-clear:hover { background: #fee2e2; }
+
+
+.btn-icon-left { font-size: 16px; line-height: 1; }
 
 /* ===== PANEL ===== */
 .panel {
@@ -1024,7 +1296,6 @@ watch(() => route.params.id, async (newId, oldId) => {
   letter-spacing: 0.04em;
 }
 
-/* ===== SORTABLE HEADER ===== */
 .sortable-th {
   cursor: pointer;
   user-select: none;
@@ -1084,7 +1355,6 @@ watch(() => route.params.id, async (newId, oldId) => {
 .cell-value { color: #111827; }
 .cell-empty { color: #d1d5db; }
 
-/* ===== ICON ACTION BUTTONS ===== */
 .btn-icon-action {
   width: 30px;
   height: 30px;

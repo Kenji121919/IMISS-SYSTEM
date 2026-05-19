@@ -133,7 +133,7 @@ onMounted(async () => {
 
 if (isAdmin) {
   menuItems.value = [
-    { id: 'admin-0', name: 'Dashboard',       path: '/dashboard',                  icon: LayoutDashboard, isAdmin: true, exact: true },
+    //{ id: 'admin-0', name: 'Dashboard',       path: '/dashboard',                  icon: LayoutDashboard, isAdmin: true, exact: true },
     { id: 'admin-a', name: 'Analytics',        path: '/dashboard/analytics',        icon: BarChart2,       isAdmin: true },
     { id: 'admin-1', name: 'Manage Profiles',  path: '/dashboard/manage-profiles',  icon: User,            isAdmin: true },
     { id: 'admin-2', name: 'Manage Modules',   path: '/dashboard/manage-modules',   icon: Settings,        isAdmin: true },

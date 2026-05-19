@@ -20,7 +20,6 @@
         <p v-else>Select a module below</p>
       </div>
 
-      <!-- DATE RANGE (only shown when a module is selected) -->
       <div v-if="activeModule" class="filter-row">
         <div class="date-range-row">
           <div class="date-input-wrap">
@@ -52,7 +51,6 @@
         @click="selectModule(m)"
       >
         {{ m.name }}
-        <!-- FIX: show '–' for modules whose logs haven't been fetched yet -->
         <span class="tab-count">
           {{ logsByModule[m.id] !== undefined ? logsByModule[m.id].length : '–' }}
         </span>
@@ -105,29 +103,113 @@
         <span>Try a different date range or add some logs.</span>
       </div>
 
-      <!-- ================= CHARTS ================= -->
-      <div v-else class="charts-grid" :class="{ 'single-col': chartMeta.length === 1 }">
-        <div
-          v-for="item in chartMeta"
-          :key="item.col.name"
-          class="chart-card"
-          :class="{
-            'span-2': item.chartType === 'timeline' || item.chartType === 'top-bar',
-          }"
-        >
-          <div class="chart-header">
-            <div>
-              <div class="chart-title">{{ item.col.name }}</div>
-              <div class="chart-sub">{{ chartSubLabel(item) }}</div>
-            </div>
-            <div class="chart-type-badge">{{ chartTypeName(item.chartType) }}</div>
+      <template v-else>
+
+        <!-- ========== OPTION BREAKDOWN ========== -->
+        <div v-if="optionStats.length" class="section-block">
+          <div class="section-header">
+            <span class="section-title">Option Breakdown</span>
+            <span class="section-sub">Distribution of categorical fields</span>
           </div>
-          <div :style="{ position: 'relative', height: item.chartType === 'timeline' ? '200px' : '210px' }">
-            <canvas :ref="el => { if (el) canvasMap[item.col.name] = el }"></canvas>
+
+          <div class="option-grid">
+            <div
+              v-for="os in optionStats"
+              :key="os.colName"
+              class="option-card"
+            >
+              <!-- Header -->
+              <div class="option-card-head">
+                <span class="option-card-name">{{ os.colName }}</span>
+                <span class="option-card-total">{{ os.total.toLocaleString() }} entries</span>
+              </div>
+
+              <!-- Stacked progress bar (full-width visual summary) -->
+              <div class="option-stack-bar">
+                <div
+                  v-for="item in os.items"
+                  :key="item.value"
+                  class="option-stack-seg"
+                  :style="{ width: item.pct + '%', background: item.color }"
+                  :title="`${item.value}: ${item.count} (${item.pct}%)`"
+                ></div>
+              </div>
+
+              <!-- Per-value breakdown rows -->
+              <div class="option-rows">
+                <div
+                  v-for="item in os.items"
+                  :key="item.value"
+                  class="option-row"
+                >
+                  <div class="option-row-left">
+                    <span class="option-dot" :style="{ background: item.color }"></span>
+                    <span class="option-label">{{ item.value }}</span>
+                  </div>
+                  <div class="option-bar-track">
+                    <div
+                      class="option-bar-fill"
+                      :style="{ width: item.pct + '%', background: item.color }"
+                    ></div>
+                  </div>
+                  <div class="option-row-right">
+                    <span class="option-count">{{ item.count.toLocaleString() }}</span>
+                    <span class="option-pct" :style="{ color: item.color }">{{ item.pct }}%</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Pill legend -->
+              <div class="option-pills">
+                <span
+                  v-for="item in os.items"
+                  :key="item.value"
+                  class="option-pill"
+                  :style="{
+                    background: item.color + '15',
+                    color: item.color,
+                    borderColor: item.color + '35',
+                  }"
+                >
+                  {{ item.value }}
+                  <strong>{{ item.count }}</strong>
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
+        <!-- ========== CHARTS ========== -->
+        <div v-if="chartMeta.length" class="section-block">
+          <div class="section-header">
+            <span class="section-title">Charts</span>
+            <span class="section-sub">Trends and distributions</span>
+          </div>
+
+          <div class="charts-grid" :class="{ 'single-col': chartMeta.length === 1 }">
+            <div
+              v-for="item in chartMeta"
+              :key="item.col.name"
+              class="chart-card"
+              :class="{
+                'span-2': item.chartType === 'timeline' || item.chartType === 'top-bar',
+              }"
+            >
+              <div class="chart-header">
+                <div>
+                  <div class="chart-title">{{ item.col.name }}</div>
+                  <div class="chart-sub">{{ chartSubLabel(item) }}</div>
+                </div>
+                <div class="chart-type-badge">{{ chartTypeName(item.chartType) }}</div>
+              </div>
+              <div :style="{ position: 'relative', height: item.chartType === 'timeline' ? '200px' : '210px' }">
+                <canvas :ref="el => { if (el) canvasMap[item.col.name] = el }"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </template>
     </template>
 
   </div>
@@ -135,25 +217,23 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { Chart, registerables } from 'chart.js'
-import { useDynamicDashboard, getVal, clearCanvasMap } from './useDynamicDashboard.js'
+import { useDynamicDashboard, getVal, clearCanvasMap, computeOptionStats } from './useDynamicDashboard.js'
 import api from '@/api/axios'
-
-// NOTE: Chart.register is already called inside useDynamicDashboard.js — don't call it again here.
 
 /* ─── STATE ─────────────────────────────────────────── */
 const loading        = ref(true)
 const rebuilding     = ref(false)
 const allowedModules = ref([])
 const activeModule   = ref(null)
-const logsByModule   = ref({})   // moduleId → normalized logs[]
+const logsByModule   = ref({})
 
 const dateFrom = ref('')
 const dateTo   = ref('')
 
 const chartMeta    = ref([])
 const numericStats = ref([])
-const canvasMap    = {}   // col.name → canvas element; MUST be cleared before every rebuild
+const optionStats  = ref([])   // ← NEW: one entry per option/categorical column
+const canvasMap    = {}
 
 const toast = ref({ show: false, message: '', type: 'success' })
 
@@ -161,14 +241,12 @@ const toast = ref({ show: false, message: '', type: 'success' })
 const { analyse, buildCharts, destroyAll } = useDynamicDashboard()
 
 /* ─── COMPUTED ──────────────────────────────────────── */
-
 const currentLogs = computed(() =>
   activeModule.value ? (logsByModule.value[activeModule.value.id] || []) : []
 )
 
 const filteredLogs = computed(() => {
   let logs = currentLogs.value
-
   const dateCol = activeModule.value?.columns?.find(c => c.type === 'date')
   if (dateCol && (dateFrom.value || dateTo.value)) {
     logs = logs.filter(l => {
@@ -185,7 +263,6 @@ const filteredLogs = computed(() => {
       return true
     })
   }
-
   return logs
 })
 
@@ -194,43 +271,39 @@ const selectModule = async (m) => {
   activeModule.value = m
   dateFrom.value = ''
   dateTo.value   = ''
-
-  if (!logsByModule.value[m.id]) {
-    await loadLogsForModule(m)
-  }
-
+  if (!logsByModule.value[m.id]) await loadLogsForModule(m)
   await rebuild()
 }
 
-/* ─── REBUILD CHARTS ────────────────────────────────── */
+/* ─── REBUILD ───────────────────────────────────────── */
 const rebuild = async () => {
   if (!activeModule.value) return
   rebuilding.value = true
   destroyAll()
-
-  // FIX: clear stale canvas refs from the previous module before Vue re-renders
   clearCanvasMap(canvasMap)
 
   chartMeta.value    = []
   numericStats.value = []
+  optionStats.value  = []
 
-  // First tick: lets Vue unmount old chart-card divs (rebuilding flag hides them)
   await nextTick()
 
-  const logs = filteredLogs.value
+  const logs    = filteredLogs.value
+  const columns = activeModule.value.columns || []
+
   if (!logs.length) { rebuilding.value = false; return }
 
-  const result = analyse(activeModule.value.columns || [], logs)
+  // Numeric + chart analysis (unchanged)
+  const result = analyse(columns, logs)
   chartMeta.value    = result.chartMeta
   numericStats.value = result.numericStats
 
-  // Unset rebuilding so Vue renders the new canvas elements
+  // NEW: option/categorical breakdown
+  optionStats.value = computeOptionStats(columns, logs)
+
   rebuilding.value = false
-
-  // FIX: double nextTick — first renders chart-card divs, second fires :ref callbacks
   await nextTick()
   await nextTick()
-
   buildCharts(chartMeta.value, logs, canvasMap)
 }
 
@@ -261,10 +334,10 @@ const chartSubLabel = ({ col, chartType }) => {
 
 const chartTypeName = (type) => {
   const map = {
-    doughnut:       'Pie',
-    'bar-breakdown':'Bar',
-    timeline:       'Timeline',
-    'top-bar':      'Top-N bar',
+    doughnut:        'Pie',
+    'bar-breakdown': 'Bar',
+    timeline:        'Timeline',
+    'top-bar':       'Top-N bar',
   }
   return map[type] ?? type.replace(/-/g, ' ')
 }
@@ -288,7 +361,6 @@ const normalizeLog = (log, moduleId) => {
 const loadLogsForModule = async (m) => {
   try {
     const res = await api.get(`/logs/module/${m.id}`)
-    // FIX: assign to reactive ref so template's logsByModule[m.id] check is reactive
     logsByModule.value = {
       ...logsByModule.value,
       [m.id]: res.data.map(l => normalizeLog(l, m.id)),
@@ -304,7 +376,6 @@ onMounted(async () => {
   try {
     const activeProfile = JSON.parse(localStorage.getItem('activeProfile') || '{}')
     const profileId = activeProfile?.id
-
     if (!profileId) { loading.value = false; return }
 
     const res  = await api.get(`/modules/profile/${profileId}`)
@@ -359,45 +430,33 @@ onBeforeUnmount(() => destroyAll())
 
 /* ─── TOPBAR ─────────────────────────────────────────── */
 .topbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 16px;
+  display: flex; align-items: flex-start;
+  justify-content: space-between; flex-wrap: wrap;
+  gap: 12px; margin-bottom: 16px;
 }
 .topbar-left h1 { font-size: 20px; font-weight: 600; color: #111827; margin: 0; }
 .topbar-left p  { font-size: 13px; color: #6b7280; margin-top: 2px; }
 .topbar-left strong { color: #111827; }
 
 .filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
 .date-range-row { display: flex; align-items: center; gap: 6px; }
 .date-input-wrap { position: relative; }
 .date-input {
-  height: 34px;
-  padding: 14px 8px 4px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 12px;
-  color: #111827;
-  background: white;
-  outline: none;
-  transition: border-color 0.15s;
-  min-width: 130px;
-  box-sizing: border-box;
+  height: 34px; padding: 14px 8px 4px;
+  border: 1px solid #e5e7eb; border-radius: 8px;
+  font-size: 12px; color: #111827; background: white;
+  outline: none; transition: border-color 0.15s;
+  min-width: 130px; box-sizing: border-box;
 }
 .date-input:focus { border-color: #378ADD; box-shadow: 0 0 0 3px rgba(55,138,221,0.12); }
 .date-label {
   position: absolute; left: 8px; top: 4px;
-  font-size: 9px; font-weight: 600;
-  color: #9ca3af; letter-spacing: 0.04em;
-  text-transform: uppercase; pointer-events: none;
+  font-size: 9px; font-weight: 600; color: #9ca3af;
+  letter-spacing: 0.04em; text-transform: uppercase; pointer-events: none;
 }
 .date-input:focus ~ .date-label,
 .date-input:valid ~ .date-label { color: #378ADD; }
 .date-sep { font-size: 12px; color: #9ca3af; }
-
 .btn-today {
   height: 34px; padding: 0 10px;
   background: #eff6ff; border: 1px solid #bfdbfe;
@@ -406,7 +465,6 @@ onBeforeUnmount(() => destroyAll())
   white-space: nowrap; transition: all 0.15s;
 }
 .btn-today:hover { background: #dbeafe; }
-
 .clear-btn {
   display: flex; align-items: center; gap: 5px;
   padding: 7px 12px; font-size: 12px;
@@ -418,63 +476,33 @@ onBeforeUnmount(() => destroyAll())
 
 /* ─── MODULE TABS ────────────────────────────────────── */
 .module-tabs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-bottom: 20px; padding-bottom: 16px;
   border-bottom: 1px solid #eef2f7;
 }
-
 .tab-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  border: 1px solid #e5e7eb;
-  border-radius: 99px;
-  background: white;
-  color: #6b7280;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s;
-  font-family: inherit;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border: 1px solid #e5e7eb;
+  border-radius: 99px; background: white; color: #6b7280;
+  font-size: 13px; cursor: pointer; transition: all 0.15s; font-family: inherit;
 }
 .tab-btn:hover { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
-.tab-btn.active {
-  background: #111827;
-  border-color: #111827;
-  color: white;
-  font-weight: 500;
-}
-
+.tab-btn.active { background: #111827; border-color: #111827; color: white; font-weight: 500; }
 .tab-count {
-  font-size: 11px;
-  padding: 1px 7px;
-  border-radius: 99px;
-  background: rgba(255,255,255,0.2);
-  color: inherit;
-  font-weight: 600;
+  font-size: 11px; padding: 1px 7px; border-radius: 99px;
+  background: rgba(255,255,255,0.2); color: inherit; font-weight: 600;
 }
-.tab-btn:not(.active) .tab-count {
-  background: #f1f5f9;
-  color: #9ca3af;
-}
+.tab-btn:not(.active) .tab-count { background: #f1f5f9; color: #9ca3af; }
 
 /* ─── STAT CARDS ─────────────────────────────────────── */
 .stat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px; margin-bottom: 20px;
 }
 .stat-card {
-  background: white;
-  border: 1px solid #eef2f7;
-  border-radius: 12px;
-  padding: 16px;
-  border-left: 3px solid #e5e7eb;
-  transition: box-shadow 0.15s;
+  background: white; border: 1px solid #eef2f7;
+  border-radius: 12px; padding: 16px;
+  border-left: 3px solid #e5e7eb; transition: box-shadow 0.15s;
 }
 .stat-card:hover   { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
 .stat-card.numeric { border-left-color: #378ADD; }
@@ -482,31 +510,112 @@ onBeforeUnmount(() => destroyAll())
 .stat-value { font-size: 26px; font-weight: 600; color: #111827; letter-spacing: -0.5px; }
 .stat-sub   { font-size: 11px; color: #9ca3af; margin-top: 4px; }
 
+/* ─── SECTION BLOCKS ─────────────────────────────────── */
+.section-block { margin-bottom: 24px; }
+.section-header {
+  display: flex; align-items: baseline; gap: 10px;
+  margin-bottom: 12px;
+}
+.section-title { font-size: 13px; font-weight: 600; color: #111827; }
+.section-sub   { font-size: 11px; color: #9ca3af; }
+
+/* ─── OPTION BREAKDOWN ───────────────────────────────── */
+.option-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.option-card {
+  background: white;
+  border: 1px solid #eef2f7;
+  border-radius: 14px;
+  padding: 16px;
+  transition: box-shadow 0.15s;
+}
+.option-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+
+.option-card-head {
+  display: flex; align-items: center;
+  justify-content: space-between; margin-bottom: 12px;
+}
+.option-card-name  { font-size: 13px; font-weight: 600; color: #111827; }
+.option-card-total { font-size: 11px; color: #9ca3af; }
+
+/* Stacked progress bar */
+.option-stack-bar {
+  display: flex; height: 6px; border-radius: 99px;
+  overflow: hidden; gap: 2px; margin-bottom: 14px;
+  background: #f1f5f9;
+}
+.option-stack-seg {
+  height: 100%; min-width: 2px;
+  transition: width 0.4s ease; border-radius: 2px;
+}
+
+/* Per-value rows */
+.option-rows {
+  display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;
+}
+.option-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 70px;
+  align-items: center; gap: 8px;
+}
+.option-row-left {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+}
+.option-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.option-label {
+  font-size: 12px; color: #374151;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.option-bar-track {
+  height: 6px; background: #f1f5f9;
+  border-radius: 99px; overflow: hidden;
+}
+.option-bar-fill {
+  height: 100%; border-radius: 99px;
+  transition: width 0.4s ease; opacity: 0.75;
+}
+.option-row-right {
+  display: flex; align-items: center;
+  justify-content: flex-end; gap: 6px;
+}
+.option-count { font-size: 12px; font-weight: 600; color: #111827; }
+.option-pct   { font-size: 11px; font-weight: 500; min-width: 30px; text-align: right; }
+
+/* Pills */
+.option-pills {
+  display: flex; flex-wrap: wrap; gap: 5px;
+  padding-top: 10px; border-top: 1px solid #f1f5f9;
+}
+.option-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 99px; border: 1px solid;
+  font-size: 11px; font-weight: 500;
+}
+.option-pill strong { font-weight: 700; }
+
 /* ─── CHARTS ─────────────────────────────────────────── */
 .charts-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;
 }
 .charts-grid.single-col { grid-template-columns: 1fr; }
 .charts-grid .span-2    { grid-column: span 2; }
 
 .chart-card {
-  background: white;
-  border: 1px solid #eef2f7;
-  border-radius: 14px;
-  padding: 16px;
+  background: white; border: 1px solid #eef2f7;
+  border-radius: 14px; padding: 16px;
 }
 .chart-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
+  display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 8px; margin-bottom: 12px;
 }
 .chart-title { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 2px; }
 .chart-sub   { font-size: 11px; color: #9ca3af; }
-
 .chart-type-badge {
   font-size: 10px; font-weight: 600;
   padding: 3px 8px; border-radius: 99px;
@@ -517,9 +626,8 @@ onBeforeUnmount(() => destroyAll())
 
 /* ─── EMPTY / LOADING ────────────────────────────────── */
 .empty-board {
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 8px; padding: 60px 0;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 8px; padding: 60px 0;
   color: #9ca3af; text-align: center;
 }
 .empty-icon  { font-size: 36px; opacity: 0.5; }
@@ -527,16 +635,13 @@ onBeforeUnmount(() => destroyAll())
 .empty-board span { font-size: 12px; }
 
 .loading-overlay {
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 12px; padding: 80px 0;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px; padding: 80px 0;
   color: #9ca3af; font-size: 13px;
 }
 .spinner {
-  width: 28px; height: 28px;
-  border: 3px solid #e5e7eb;
-  border-top-color: #378ADD;
-  border-radius: 50%;
+  width: 28px; height: 28px; border: 3px solid #e5e7eb;
+  border-top-color: #378ADD; border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -545,6 +650,8 @@ onBeforeUnmount(() => destroyAll())
 @media (max-width: 900px) {
   .charts-grid { grid-template-columns: 1fr; }
   .charts-grid .span-2 { grid-column: span 1; }
+  .option-grid { grid-template-columns: 1fr; }
+  .option-row  { grid-template-columns: 100px 1fr 56px; }
 }
 @media (max-width: 768px) {
   .page { padding: 16px; }

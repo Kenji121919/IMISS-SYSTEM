@@ -10,12 +10,11 @@
  *   int                                → stat card (sum + avg) + optional bar
  *   varchar (high cardinality)         → top-10 bar chart
  *
- * FIXES applied vs original:
- *   - Dark mode: MediaQueryList listener instead of one-time snapshot
- *   - Bar builders: merged buildBarBreakdown + buildTopBar → single buildBar()
- *   - Thresholds: named constants instead of magic numbers
- *   - Chart.register: done once here; components must NOT call it again
- *   - clearCanvasMap() helper exported so callers can wipe stale refs
+ * NEW: computeOptionStats()
+ *   Detects columns whose type is 'select' / 'option' / 'status' / 'enum' /
+ *   'dropdown' / 'choice', OR whose values form a small fixed set of strings
+ *   (≤ 15 distinct, all non-numeric, ≥ 2 distinct). Returns per-value counts,
+ *   percentages and a consistent colour assignment.
  */
 
 import { Chart, registerables } from 'chart.js'
@@ -26,7 +25,18 @@ export const THRESHOLDS = {
   doughnutMaxUniq:      5,   // ≤ this → doughnut; > this → bar-breakdown
   barBreakdownMaxUniq:  8,   // ≤ this → bar-breakdown; > this → top-bar
   topBarLimit:         10,   // max entries in a top-bar
+  optionAutoMaxUniq:   15,   // auto-detect: ≤ this unique non-numeric vals → option col
+  optionAutoMinUniq:    2,   // auto-detect: must have at least this many distinct values
 }
+
+/* ─── OPTION ANALYSIS PALETTE ─────────────────────────── */
+// 12 visually distinct colours; index 12+ falls back to neutral grey.
+export const OPTION_COLORS = [
+  '#378ADD', '#22c55e', '#f59e0b', '#ef4444',
+  '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6',
+  '#f97316', '#6366f1', '#84cc16', '#e11d48',
+]
+export const OPTION_COLOR_FALLBACK = '#9ca3af'
 
 /* ─── THEME (reactive to system changes) ─────────────────*/
 const mql = window.matchMedia('(prefers-color-scheme: dark)')
@@ -88,6 +98,88 @@ const lastNDays = (n) => {
 const fmtDay = (iso) => {
   const d = new Date(iso)
   return `${d.toLocaleString('default', { month: 'short' })} ${d.getDate()}`
+}
+
+/* ─── OPTION ANALYSIS ─────────────────────────────────── */
+
+/** Column types that are always treated as option/categorical */
+const OPTION_TYPES = new Set([
+  'option', 'select', 'status', 'enum', 'dropdown', 'choice',
+])
+
+/**
+ * Decide whether a column qualifies for option analysis.
+ * Explicit option types always qualify; other columns qualify when their
+ * values form a small, fixed, non-numeric set.
+ */
+const isOptionColumn = (col, logs) => {
+  if (OPTION_TYPES.has(col.type)) return true
+
+  // Auto-detect from data
+  const vals = logs
+    .map(l => {
+      const v = getVal(l, col.name)
+      return v && v !== '-' ? v.trim() : null
+    })
+    .filter(Boolean)
+
+  if (!vals.length) return false
+
+  const unique = new Set(vals)
+  const allNumeric = [...unique].every(v => !isNaN(Number(v)))
+
+  return (
+    unique.size >= THRESHOLDS.optionAutoMinUniq &&
+    unique.size <= THRESHOLDS.optionAutoMaxUniq &&
+    !allNumeric
+  )
+}
+
+/**
+ * computeOptionStats(columns, logs)
+ *
+ * For every qualifying option/categorical column, returns:
+ *   {
+ *     colName: string,
+ *     total:   number,          // logs that have a value for this column
+ *     items: [{
+ *       value: string,
+ *       count: number,
+ *       pct:   number,          // 0–100, rounded
+ *       color: string,          // hex colour from OPTION_COLORS palette
+ *     }]
+ *   }
+ *
+ * Items are sorted descending by count.
+ */
+export const computeOptionStats = (columns, logs) => {
+  if (!logs.length || !columns.length) return []
+
+  return columns
+    .filter(col => isOptionColumn(col, logs))
+    .map(col => {
+      const tally = {}
+      let total = 0
+
+      logs.forEach(l => {
+        const raw = getVal(l, col.name)
+        const val = raw && raw !== '-' ? raw.trim() : null
+        if (!val) return
+        tally[val] = (tally[val] || 0) + 1
+        total++
+      })
+
+      const items = Object.entries(tally)
+        .sort((a, b) => b[1] - a[1])
+        .map(([value, count], idx) => ({
+          value,
+          count,
+          pct:   total ? Math.round((count / total) * 100) : 0,
+          color: OPTION_COLORS[idx] ?? OPTION_COLOR_FALLBACK,
+        }))
+
+      return { colName: col.name, items, total }
+    })
 }
 
 /* ─── COLUMN ANALYSIS ─────────────────────────────────── */
@@ -195,14 +287,7 @@ export const buildDoughnut = (canvas, col, logs) => {
 }
 
 /**
- * Unified bar chart builder — replaces separate buildBarBreakdown + buildTopBar.
- *
- * @param {HTMLCanvasElement} canvas
- * @param {Object}  col
- * @param {Array}   logs
- * @param {Object}  opts
- * @param {boolean} opts.horizontal  true → indexAxis:'y' (breakdown), false → vertical (top-bar)
- * @param {number}  opts.limit       max entries to show
+ * Unified bar chart builder.
  */
 export const buildBar = (canvas, col, logs, { horizontal = false, limit = THRESHOLDS.topBarLimit } = {}) => {
   const fm      = freqMap(logs, col.name)
@@ -245,7 +330,6 @@ export const buildBar = (canvas, col, logs, { horizontal = false, limit = THRESH
   })
 }
 
-// Convenience aliases kept for backwards-compat with any direct callers
 export const buildBarBreakdown = (canvas, col, logs, limit) =>
   buildBar(canvas, col, logs, { horizontal: true, limit })
 
@@ -292,29 +376,12 @@ export const buildTimeline = (canvas, col, logs, days = 30) => {
 
 /* ─── CANVAS MAP HELPER ───────────────────────────────── */
 
-/**
- * Wipe all keys from a canvasMap object in-place.
- * Call this at the start of every rebuild() so stale canvas refs
- * from the previous module/filter don't pollute the next render.
- */
 export const clearCanvasMap = (canvasMap) => {
   Object.keys(canvasMap).forEach(k => delete canvasMap[k])
 }
 
 /* ─── MAIN COMPOSABLE ─────────────────────────────────── */
 
-/**
- * useDynamicDashboard()
- *
- * @returns {
- *   analyse:     (columns, logs) => { chartMeta, numericStats }
- *   buildCharts: (chartMeta, logs, canvasMap, overrides?) => void
- *   destroyAll:  () => void
- * }
- *
- * overrides: { [colName]: 'doughnut'|'bar-breakdown'|'top-bar'|'timeline'|'skip' }
- *   Allows admins to override auto-detected chart types per column.
- */
 export const useDynamicDashboard = () => {
   let activeCharts = []
 
@@ -323,17 +390,11 @@ export const useDynamicDashboard = () => {
     activeCharts = []
   }
 
-  /**
-   * Analyse columns + logs → return { chartMeta, numericStats }
-   * chartMeta items: { col, chartType }
-   * Caller must call buildCharts(canvasMap) after nextTick × 2.
-   */
   const analyse = (columns, logs, overrides = {}) => {
     const chartMeta    = []
     const numericStats = []
 
     for (const col of columns) {
-      // Admin override takes precedence
       const chartType = overrides[col.name] ?? classifyColumn(col, logs)
       if (chartType === 'skip') continue
 
@@ -348,13 +409,6 @@ export const useDynamicDashboard = () => {
     return { chartMeta, numericStats }
   }
 
-  /**
-   * Mount all charts onto canvas elements.
-   * canvasMap: { [colName]: HTMLCanvasElement }
-   *
-   * FIX: caller must await nextTick() TWICE before calling this so that
-   * the Vue :ref callbacks have fired on the newly-rendered canvases.
-   */
   const buildCharts = (chartMeta, logs, canvasMap) => {
     destroyAll()
 
