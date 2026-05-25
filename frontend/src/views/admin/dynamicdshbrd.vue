@@ -28,17 +28,34 @@
         </div>
 
         <!-- DATE RANGE -->
-        <div class="date-range-row">
-          <div class="date-input-wrap">
-            <input type="date" v-model="dateFrom" @change="onDateChange" class="date-input" />
-            <label class="date-label">From</label>
+        <div class="date-picker-wrap">
+          <button
+            :class="['date-trigger', { active: dateFrom || dateTo }]"
+            @click="showDatePicker = !showDatePicker"
+            type="button"
+          >
+            <span class="date-trigger-label">{{ dateRangeLabel }}</span>
+            <span v-if="dateFrom || dateTo" class="date-trigger-clear" @click.stop="clearDateFilter" title="Clear">✕</span>
+            <span v-else class="date-trigger-caret">▾</span>
+          </button>
+
+          <div v-if="showDatePicker" class="date-dropdown">
+            <div class="date-dropdown-row">
+              <div class="date-dropdown-field">
+                <label class="date-dropdown-label">From</label>
+                <input type="date" v-model="dateFrom" class="date-dropdown-input" :max="dateTo || undefined" @change="onDateChange" />
+              </div>
+              <div class="date-dropdown-field">
+                <label class="date-dropdown-label">To</label>
+                <input type="date" v-model="dateTo" class="date-dropdown-input" :min="dateFrom || undefined" @change="onDateChange" />
+              </div>
+            </div>
+            <div class="date-dropdown-footer">
+              <button class="btn-shortcut" @click="setToday">Today</button>
+              <button class="btn-shortcut" @click="setLast30">Last 30d</button>
+              <button class="btn-shortcut" @click="setThisMonth">This month</button>
+            </div>
           </div>
-          <span class="date-sep">→</span>
-          <div class="date-input-wrap">
-            <input type="date" v-model="dateTo" @change="onDateChange" class="date-input" />
-            <label class="date-label">To</label>
-          </div>
-          <button class="btn-today" @click="setLast30">Last 30d</button>
         </div>
 
         <!-- CUSTOMIZE TOGGLE -->
@@ -218,16 +235,14 @@ const allLogs          = ref([])
 const selectedModuleId = ref('all')
 const dateFrom         = ref('')
 const dateTo           = ref('')
-
 const chartMeta    = ref([])
 const numericStats = ref([])
-const canvasMap    = {}   // col.name → canvas element; MUST be cleared before every rebuild
-
+const canvasMap    = {}   
 const moduleBreakdownRef = ref(null)
-
 const toast          = ref({ show: false, message: '', type: 'success' })
 const showCustomize  = ref(false)
-const chartOverrides = ref({})   // { [colName]: chart-type string | 'auto' }
+const chartOverrides = ref({})   
+const showDatePicker = ref(false)
 
 /* ─── COMPOSABLE ────────────────────────────────────── */
 const { analyse, buildCharts, destroyAll } = useDynamicDashboard()
@@ -375,7 +390,36 @@ const chartTypeName = (type) => {
   }
   return map[type] ?? type.replace(/-/g, ' ')
 }
+const dateRangeLabel = computed(() => {
+  if (dateFrom.value && dateTo.value) return `${dateFrom.value} → ${dateTo.value}`
+  if (dateFrom.value) return `From ${dateFrom.value}`
+  if (dateTo.value)   return `Until ${dateTo.value}`
+  return 'Date range'
+})
 
+const clearDateFilter = () => {
+  dateFrom.value = ''
+  dateTo.value   = ''
+  showDatePicker.value = false
+  rebuild()
+}
+
+const setToday = () => {
+  const t = new Date().toISOString().slice(0, 10)
+  dateFrom.value = t
+  dateTo.value   = t
+  onDateChange()
+}
+
+const setThisMonth = () => {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const lastDay = new Date(y, now.getMonth() + 1, 0).getDate()
+  dateFrom.value = `${y}-${m}-01`
+  dateTo.value   = `${y}-${m}-${lastDay}`
+  onDateChange()
+}
 /* ─── REBUILD ───────────────────────────────────────── */
 
 const rebuild = async () => {
@@ -567,48 +611,116 @@ onBeforeUnmount(() => {
 }
 
 /* ─── DATE RANGE ─────────────────────────────────────── */
-.date-range-row { display: flex; align-items: center; gap: 6px; }
-.date-input-wrap { position: relative; }
-.date-input {
+.date-picker-wrap {
+  position: relative;
+}
+
+.date-trigger {
   height: 34px;
-  padding: 14px 8px 4px;
+  padding: 0 10px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
+  background: white;
+  color: #374151;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.date-trigger:hover { border-color: #d1d5db; background: #f9fafb; }
+.date-trigger.active {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  color: #1d4ed8;
+}
+
+.date-trigger-label { font-size: 12px; }
+.date-trigger-caret { font-size: 11px; color: #9ca3af; }
+.date-trigger-clear {
+  font-size: 11px;
+  color: #9ca3af;
+  transition: color 0.15s;
+  line-height: 1;
+}
+.date-trigger-clear:hover { color: #ef4444; }
+
+.date-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 100;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.date-dropdown-row {
+  display: flex;
+  gap: 8px;
+}
+
+.date-dropdown-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.date-dropdown-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7280;
+  letter-spacing: 0.03em;
+}
+
+.date-dropdown-input {
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
   font-size: 12px;
   color: #111827;
   background: white;
   outline: none;
-  transition: border-color 0.15s;
-  min-width: 130px;
+  width: 100%;
   box-sizing: border-box;
+  transition: border-color 0.15s;
 }
-.date-input:focus { border-color: #378ADD; box-shadow: 0 0 0 3px rgba(55,138,221,0.12); }
-.date-label {
-  position: absolute;
-  left: 8px; top: 4px;
-  font-size: 9px; font-weight: 600;
-  color: #9ca3af; letter-spacing: 0.04em;
-  text-transform: uppercase;
-  pointer-events: none;
+.date-dropdown-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
 }
-.date-input:focus ~ .date-label,
-.date-input:valid ~ .date-label { color: #378ADD; }
-.date-sep { font-size: 12px; color: #9ca3af; }
 
-.btn-today {
-  height: 34px;
-  padding: 0 10px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1d4ed8;
-  border-radius: 8px;
-  font-size: 12px;
+.date-dropdown-footer {
+  display: flex;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.btn-shortcut {
+  flex: 1;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  color: #374151;
+  padding: 5px 0;
+  border-radius: 6px;
+  font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  white-space: nowrap;
   transition: all 0.15s;
 }
-.btn-today:hover { background: #dbeafe; }
+.btn-shortcut:hover { background: #e5e7eb; }
+
 
 .btn-customize {
   height: 34px;

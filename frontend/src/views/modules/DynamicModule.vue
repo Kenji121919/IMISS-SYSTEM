@@ -328,7 +328,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/api/axios'
 
@@ -345,13 +345,12 @@ const vClickOutside = {
   }
 }
 
-
 const module = ref(null)
 const columns = ref([])
 const logs = ref([])
 const showModal = ref(false)
 const showDelete = ref(false)
-const showFilters = ref(false)   // ← NEW: controls filter panel visibility
+const showFilters = ref(false)
 const isEdit = ref(false)
 const selectedId = ref(null)
 const form = ref({})
@@ -398,6 +397,27 @@ const safeParse = (val) => {
   try { return JSON.parse(val) } catch { return [] }
 }
 
+/* ================= DEBOUNCE ================= */
+const debounce = (fn, delay) => {
+  let timer = null
+  return (...args) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => fn(...args), delay)
+  }
+}
+
+const debouncedSearch = ref('')
+const debouncedFilters = ref({})
+const debouncedDates = ref({})
+
+const applyDebounced = debounce(() => {
+  debouncedSearch.value   = searchQuery.value
+  debouncedFilters.value  = { ...activeFilters.value }
+  debouncedDates.value    = JSON.parse(JSON.stringify(dateFilters.value))
+  currentPage.value = 1
+}, 300)
+
+watch([searchQuery, activeFilters, dateFilters], applyDebounced, { deep: true })
 /* ================= DATE PICKER ================= */
 const openDatePicker = ref(null)
 
@@ -452,6 +472,10 @@ const initFilters = () => {
       activeFilters.value[col.name] = ''
     }
   })
+
+  debouncedFilters.value = { ...activeFilters.value }
+  debouncedDates.value   = JSON.parse(JSON.stringify(dateFilters.value))
+  debouncedSearch.value  = ''
 }
 
 /* ================= LOAD MODULE ================= */
@@ -475,8 +499,10 @@ const normalizeLog = (log) => {
   const data = {}
   if (log.values && Array.isArray(log.values)) {
     log.values.forEach(v => {
-      const colName = v.column?.name || v.column
-      data[colName] = v.value
+      const colName = v.column?.name ?? v.column_name ?? v.column
+      if (colName && typeof colName === 'string') {
+        data[colName] = v.value
+      }
     })
   }
   if (log.data && typeof log.data === 'object') Object.assign(data, log.data)
@@ -494,12 +520,32 @@ const loadAll = async () => {
   await loadLogs()
 }
 
+/* ================= POLLING ================= */
+let pollInterval = null
+
+const startPolling = () => {
+  pollInterval = setInterval(async () => {
+    if (document.hidden) return // skip if tab not visible
+    try {
+      const res = await api.get(`/logs/module/${route.params.id}`)
+      logs.value = res.data.map(normalizeLog)
+    } catch (err) {
+      console.error('Poll error:', err)
+    }
+  }, 5000) // every 5 seconds
+}
+
+const stopPolling = () => {
+  if (pollInterval) {
+    clearInterval(pollInterval)
+    pollInterval = null
+  }
+}
+
 /* ================= GET VALUE ================= */
 const getValue = (log, columnName) => log.data?.[columnName] ?? '-'
 
 /* ================= FILTERS ================= */
-
-// Single source of truth for filter state — used by both hasActiveFilters and the badge count
 const activeFilterCount = computed(() => {
   let count = 0
   if (searchQuery.value) count++
@@ -508,12 +554,15 @@ const activeFilterCount = computed(() => {
   return count
 })
 
-// Derived from activeFilterCount — no duplicate iteration needed
 const hasActiveFilters = computed(() => activeFilterCount.value > 0)
 
 const clearFilters = () => {
   searchQuery.value = ''
   initFilters()
+  // flush immediately — no delay on clear
+  debouncedSearch.value  = ''
+  debouncedFilters.value = {}
+  debouncedDates.value   = {}
   currentPage.value = 1
 }
 
@@ -525,16 +574,16 @@ const parseDate = (val) => {
 
 const filteredLogs = computed(() => {
   const base = logs.value.filter(log => {
-    const matchesSearch = !searchQuery.value ||
+    const matchesSearch = !debouncedSearch.value ||        // ← was searchQuery
       Object.values(log.data || {})
-        .join(' ').toLowerCase().includes(searchQuery.value.toLowerCase())
+        .join(' ').toLowerCase().includes(debouncedSearch.value.toLowerCase())
 
-    const matchesFilters = Object.entries(activeFilters.value).every(([key, value]) => {
+    const matchesFilters = Object.entries(debouncedFilters.value).every(([key, value]) => {  // ← was activeFilters
       if (!value || value === 'all') return true
       return String(getValue(log, key)).toLowerCase().includes(String(value).toLowerCase())
     })
 
-    const matchesDates = Object.entries(dateFilters.value).every(([key, range]) => {
+    const matchesDates = Object.entries(debouncedDates.value).every(([key, range]) => {      // ← was dateFilters
       const { from, to } = range
       if (!from && !to) return true
       const cellVal = getValue(log, key)
@@ -560,13 +609,10 @@ const filteredLogs = computed(() => {
   return [...base].sort((a, b) => {
     const aVal = getValue(a, sortKey.value)
     const bVal = getValue(b, sortKey.value)
-
     if (aVal === '-' || aVal == null) return 1
     if (bVal === '-' || bVal == null) return -1
-
-    if (col?.type === 'int') return (Number(aVal) - Number(bVal)) * dir
+    if (col?.type === 'int')  return (Number(aVal) - Number(bVal)) * dir
     if (col?.type === 'date' || col?.type === 'time') return (new Date(aVal) - new Date(bVal)) * dir
-
     return String(aVal).localeCompare(String(bVal), undefined, { sensitivity: 'base' }) * dir
   })
 })
@@ -601,7 +647,7 @@ const visiblePages = computed(() => {
   return pages
 })
 
-watch([searchQuery, activeFilters, dateFilters], () => { currentPage.value = 1 }, { deep: true })
+
 
 /* ================= INPUT TYPE ================= */
 const inputType = (type) => {
@@ -626,8 +672,8 @@ const validate = () => {
 
 /* ================= ADD ================= */
 const openAdd = () => {
-  isEdit.value     = false
-  selectedId.value = null
+  isEdit.value      = false
+  selectedId.value  = null
   fieldErrors.value = {}
   form.value = {}
   columns.value.forEach(c => { form.value[c.name] = '' })
@@ -653,28 +699,30 @@ const saveLog = async () => {
   saving.value = true
   try {
     const activeProfile = JSON.parse(localStorage.getItem('activeProfile') || '{}')
-const meta = {
-  _profileName: activeProfile.name || null,
-  _moduleId:    Number(route.params.id),
-}
+    const meta = {
+      _profileName: activeProfile.name || null,
+      _moduleId:    Number(route.params.id),
+    }
 
-if (isEdit.value) {
-  await api.put(`/logs/${selectedId.value}`, { data: form.value, ...meta })
-} else {
-  await api.post('/logs', { moduleId: route.params.id, data: form.value, ...meta })
-}
+    if (isEdit.value) {
+      await api.put(`/logs/${selectedId.value}`, { data: form.value, ...meta })
+    } else {
+      await api.post('/logs', { moduleId: route.params.id, data: form.value, ...meta })
+    }
+
     showModal.value = false
     await loadLogs()
+    showToast(isEdit.value ? 'Log updated' : 'Log added', 'success')
 
     if (isEdit.value && form.value['Status'] === 'Done') {
-  const ticketNo = form.value['Ticket Number']
-  if (ticketNo) {
-    window.open(
-      `http://172.16.1.39:5001/viewJobRequest?job_id=${ticketNo}`,
-      '_blank'
-    )
-  }
-}
+      const ticketNo = form.value['Ticket Number']
+      if (ticketNo) {
+        window.open(
+          `http://172.16.1.39:5001/viewJobRequest?job_id=${ticketNo}`,
+          '_blank'
+        )
+      }
+    }
 
   } catch (err) {
     console.error(err)
@@ -693,12 +741,12 @@ const askDelete = (log) => {
 const deleteLog = async () => {
   try {
     const activeProfile = JSON.parse(localStorage.getItem('activeProfile') || '{}')
-await api.delete(`/logs/${selectedId.value}`, {
-  data: {
-    _profileName: activeProfile.name || null,
-    _moduleId:    Number(route.params.id),
-  }
-})
+    await api.delete(`/logs/${selectedId.value}`, {
+      data: {
+        _profileName: activeProfile.name || null,
+        _moduleId:    Number(route.params.id),
+      }
+    })
     showDelete.value = false
     await loadLogs()
     showToast('Log deleted', 'success')
@@ -788,10 +836,21 @@ const printLogs = () => {
 }
 
 /* ================= INIT ================= */
-onMounted(loadAll)
+onMounted(async () => {
+  await loadAll()
+  startPolling()
+})
+
+onUnmounted(() => {
+  stopPolling()
+})
 
 watch(() => route.params.id, async (newId, oldId) => {
-  if (newId && newId !== oldId) await loadAll()
+  if (newId && newId !== oldId) {
+    stopPolling()
+    await loadAll()
+    startPolling()
+  }
 })
 </script>
 
