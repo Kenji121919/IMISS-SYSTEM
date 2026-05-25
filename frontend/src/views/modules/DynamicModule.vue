@@ -196,7 +196,10 @@
                   <span v-else class="cell-empty">—</span>
                 </template>
                 <template v-else>
-                  <span v-if="getValue(log, col.name) !== '-'" class="cell-value">{{ getValue(log, col.name) }}</span>
+                  <span
+                    v-if="getValue(log, col.name) !== '-'"
+                    :class="col.name === 'Status' ? `status-badge status-${getValue(log, col.name).toLowerCase().replace(/ /g, '-')}` : 'cell-value'"
+                  >{{ getValue(log, col.name) }}</span>
                   <span v-else class="cell-empty">—</span>
                 </template>
               </td>
@@ -1616,6 +1619,19 @@ watch(() => route.params.id, async (newId, oldId) => {
   border-bottom-color: #1d4ed8;
 }
 
+/* ===== STATUS BADGES ===== */
+.status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.status-ongoing      { background: #dbeafe; color: #1d4ed8; }
+.status-pending      { background: #fef9c3; color: #a16207; }
+.status-done         { background: #dcfce7; color: #15803d; }
+.status-for-tommorow { background: #f3e8ff; color: #7e22ce; }
 /* ===== PRINT ===== */
 @media print {
   .no-print { display: none !important; }
