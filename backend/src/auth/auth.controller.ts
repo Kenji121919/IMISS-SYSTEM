@@ -5,6 +5,7 @@ import {
   Get,
   UseGuards,
   Req,
+  Res
 } from '@nestjs/common'
 import { AuthService } from './auth.service'
 import { AuthGuard } from '@nestjs/passport'
@@ -57,8 +58,12 @@ export class AuthController {
   googleAuth() {}
 
   @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
-  googleCallback(@Req() req) {
-    return this.authService.googleLogin(req.user)
-  }
+@UseGuards(AuthGuard('google'))
+async googleCallback(@Req() req, @Res() res) {
+  const result = await this.authService.googleLogin(req.user)
+  // Redirect to frontend with token in query params
+  return res.redirect(
+    `http://172.16.2.31:1234/auth/callback?token=${result.access_token}&user=${encodeURIComponent(JSON.stringify(result.user))}`
+  )
+}
 }
