@@ -7,14 +7,12 @@
  * Column type → chart mapping:
  *   select / varchar (≤8 unique vals)  → doughnut (if ≤5 vals) or bar breakdown
  *   date                               → timeline line chart (last 30 days)
- *   int                                → stat card (sum + avg) + optional bar
+ *   int (non-ID)                       → stat card (sum + avg)
+ *   int (ID/ticket-like name)          → stat card showing UNIQUE COUNT only
  *   varchar (high cardinality)         → top-10 bar chart
  *
- * NEW: computeOptionStats()
- *   Detects columns whose type is 'select' / 'option' / 'status' / 'enum' /
- *   'dropdown' / 'choice', OR whose values form a small fixed set of strings
- *   (≤ 15 distinct, all non-numeric, ≥ 2 distinct). Returns per-value counts,
- *   percentages and a consistent colour assignment.
+ * FIX: int columns whose name contains ID/ticket keywords now show
+ *      the count of unique values (e.g. 4 tickets = 4), not the sum.
  */
 
 import { Chart, registerables } from 'chart.js'
@@ -22,15 +20,23 @@ Chart.register(...registerables)
 
 /* ─── THRESHOLDS ──────────────────────────────────────── */
 export const THRESHOLDS = {
-  doughnutMaxUniq:      5,   // ≤ this → doughnut; > this → bar-breakdown
-  barBreakdownMaxUniq:  8,   // ≤ this → bar-breakdown; > this → top-bar
-  topBarLimit:         10,   // max entries in a top-bar
-  optionAutoMaxUniq:   15,   // auto-detect: ≤ this unique non-numeric vals → option col
-  optionAutoMinUniq:    2,   // auto-detect: must have at least this many distinct values
+  doughnutMaxUniq:      5,
+  barBreakdownMaxUniq:  8,
+  topBarLimit:         10,
+  optionAutoMaxUniq:   15,
+  optionAutoMinUniq:    2,
 }
 
+/* ─── ID / TICKET KEYWORD DETECTION ──────────────────── */
+const ID_KEYWORDS = [
+  'ticket', 'id', 'no', 'num', 'number', 'ref',
+  'code', 'case', 'order', 'invoice', 'serial',
+]
+
+export const isIdColumn = (col) =>
+  ID_KEYWORDS.some(kw => col.name.toLowerCase().includes(kw))
+
 /* ─── OPTION ANALYSIS PALETTE ─────────────────────────── */
-// 12 visually distinct colours; index 12+ falls back to neutral grey.
 export const OPTION_COLORS = [
   '#378ADD', '#22c55e', '#f59e0b', '#ef4444',
   '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6',
@@ -38,13 +44,11 @@ export const OPTION_COLORS = [
 ]
 export const OPTION_COLOR_FALLBACK = '#9ca3af'
 
-/* ─── THEME (reactive to system changes) ─────────────────*/
+/* ─── THEME ───────────────────────────────────────────── */
 const mql = window.matchMedia('(prefers-color-scheme: dark)')
 let _isDark = mql.matches
-
 const getGrid = () => _isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'
 const getTick = () => _isDark ? '#888' : '#9ca3af'
-
 mql.addEventListener('change', e => { _isDark = e.matches })
 
 const PALETTE = [
@@ -60,21 +64,18 @@ const PIE_PALETTE = [
 
 /* ─── HELPERS ─────────────────────────────────────────── */
 
-/** Pull a value from a log's data by column name (case-insensitive) */
 export const getVal = (log, colName) => {
   if (!log.data) return ''
   const key = Object.keys(log.data).find(k => k.toLowerCase() === colName.toLowerCase())
   return key !== undefined ? String(log.data[key] ?? '') : ''
 }
 
-/** Get all unique non-empty values for a column across logs */
 const uniqueVals = (logs, colName) => {
   const set = new Set()
   logs.forEach(l => { const v = getVal(l, colName); if (v && v !== '-') set.add(v) })
   return [...set]
 }
 
-/** Frequency map: value → count */
 const freqMap = (logs, colName) => {
   const map = {}
   logs.forEach(l => {
@@ -84,7 +85,6 @@ const freqMap = (logs, colName) => {
   return map
 }
 
-/** Get last N days as YYYY-MM-DD strings */
 const lastNDays = (n) => {
   const today = new Date()
   return Array.from({ length: n }, (_, i) => {
@@ -94,7 +94,6 @@ const lastNDays = (n) => {
   })
 }
 
-/** Format date label: "Jun 1" */
 const fmtDay = (iso) => {
   const d = new Date(iso)
   return `${d.toLocaleString('default', { month: 'short' })} ${d.getDate()}`
@@ -102,32 +101,18 @@ const fmtDay = (iso) => {
 
 /* ─── OPTION ANALYSIS ─────────────────────────────────── */
 
-/** Column types that are always treated as option/categorical */
 const OPTION_TYPES = new Set([
   'option', 'select', 'status', 'enum', 'dropdown', 'choice',
 ])
 
-/**
- * Decide whether a column qualifies for option analysis.
- * Explicit option types always qualify; other columns qualify when their
- * values form a small, fixed, non-numeric set.
- */
 const isOptionColumn = (col, logs) => {
   if (OPTION_TYPES.has(col.type)) return true
-
-  // Auto-detect from data
   const vals = logs
-    .map(l => {
-      const v = getVal(l, col.name)
-      return v && v !== '-' ? v.trim() : null
-    })
+    .map(l => { const v = getVal(l, col.name); return v && v !== '-' ? v.trim() : null })
     .filter(Boolean)
-
   if (!vals.length) return false
-
   const unique = new Set(vals)
   const allNumeric = [...unique].every(v => !isNaN(Number(v)))
-
   return (
     unique.size >= THRESHOLDS.optionAutoMinUniq &&
     unique.size <= THRESHOLDS.optionAutoMaxUniq &&
@@ -135,32 +120,13 @@ const isOptionColumn = (col, logs) => {
   )
 }
 
-/**
- * computeOptionStats(columns, logs)
- *
- * For every qualifying option/categorical column, returns:
- *   {
- *     colName: string,
- *     total:   number,          // logs that have a value for this column
- *     items: [{
- *       value: string,
- *       count: number,
- *       pct:   number,          // 0–100, rounded
- *       color: string,          // hex colour from OPTION_COLORS palette
- *     }]
- *   }
- *
- * Items are sorted descending by count.
- */
 export const computeOptionStats = (columns, logs) => {
   if (!logs.length || !columns.length) return []
-
   return columns
     .filter(col => isOptionColumn(col, logs))
     .map(col => {
       const tally = {}
       let total = 0
-
       logs.forEach(l => {
         const raw = getVal(l, col.name)
         const val = raw && raw !== '-' ? raw.trim() : null
@@ -168,7 +134,6 @@ export const computeOptionStats = (columns, logs) => {
         tally[val] = (tally[val] || 0) + 1
         total++
       })
-
       const items = Object.entries(tally)
         .sort((a, b) => b[1] - a[1])
         .map(([value, count], idx) => ({
@@ -177,17 +142,12 @@ export const computeOptionStats = (columns, logs) => {
           pct:   total ? Math.round((count / total) * 100) : 0,
           color: OPTION_COLORS[idx] ?? OPTION_COLOR_FALLBACK,
         }))
-
       return { colName: col.name, items, total }
     })
 }
 
-/* ─── COLUMN ANALYSIS ─────────────────────────────────── */
+/* ─── COLUMN CLASSIFICATION ───────────────────────────── */
 
-/**
- * Decide what kind of visualisation to create for a given column.
- * Returns one of: 'doughnut' | 'bar-breakdown' | 'timeline' | 'numeric-stat' | 'top-bar' | 'skip'
- */
 export const classifyColumn = (col, logs) => {
   if (!logs.length) return 'skip'
 
@@ -196,8 +156,13 @@ export const classifyColumn = (col, logs) => {
       return 'timeline'
 
     case 'int': {
-      const vals = logs.map(l => parseFloat(getVal(l, col.name))).filter(v => !isNaN(v))
-      return vals.length ? 'numeric-stat' : 'skip'
+      const vals = logs.map(l => getVal(l, col.name)).filter(v => v && v !== '-')
+      if (!vals.length) return 'skip'
+      // ID/ticket columns → unique-count stat card (never summed, never bar)
+      if (isIdColumn(col)) return 'numeric-stat'
+      // Regular numeric → stat card with sum/avg
+      const numeric = vals.map(v => parseFloat(v)).filter(v => !isNaN(v))
+      return numeric.length ? 'numeric-stat' : 'skip'
     }
 
     case 'select': {
@@ -223,27 +188,39 @@ export const classifyColumn = (col, logs) => {
 
 /* ─── STAT CARD BUILDER ───────────────────────────────── */
 
-/**
- * Build a stat card definition for a numeric column.
- * Returns { colName, sum, avg, min, max, count }
- */
 export const buildNumericStat = (col, logs) => {
-  const vals = logs
-    .map(l => parseFloat(getVal(l, col.name)))
-    .filter(v => !isNaN(v))
-
+  const vals = logs.map(l => getVal(l, col.name)).filter(v => v && v !== '-')
   if (!vals.length) return null
 
-  const sum = vals.reduce((a, b) => a + b, 0)
-  const avg = sum / vals.length
+  // ── FIX: ID/ticket columns → show unique count, never sum ──
+  if (isIdColumn(col)) {
+    const unique = new Set(vals)
+    return {
+      colName:  col.name,
+      count:    unique.size,
+      sum:      unique.size,  // display slot reused for unique count
+      avg:      null,
+      min:      null,
+      max:      null,
+      isIdCol:  true,
+    }
+  }
+
+  // Regular numeric column
+  const numeric = vals.map(v => parseFloat(v)).filter(v => !isNaN(v))
+  if (!numeric.length) return null
+
+  const sum = numeric.reduce((a, b) => a + b, 0)
+  const avg = sum / numeric.length
 
   return {
-    colName: col.name,
-    count:   vals.length,
-    sum:     Math.round(sum * 100) / 100,
-    avg:     Math.round(avg * 100) / 100,
-    min:     Math.min(...vals),
-    max:     Math.max(...vals),
+    colName:  col.name,
+    count:    numeric.length,
+    sum:      Math.round(sum * 100) / 100,
+    avg:      Math.round(avg * 100) / 100,
+    min:      Math.min(...numeric),
+    max:      Math.max(...numeric),
+    isIdCol:  false,
   }
 }
 
@@ -255,12 +232,10 @@ const BASE_OPTS = {
   animation:           { duration: 400 },
 }
 
-/** Doughnut chart for select columns with ≤ THRESHOLDS.doughnutMaxUniq options */
 export const buildDoughnut = (canvas, col, logs) => {
   const fm     = freqMap(logs, col.name)
   const labels = Object.keys(fm)
   const data   = Object.values(fm)
-
   return new Chart(canvas, {
     type: 'doughnut',
     data: {
@@ -286,18 +261,12 @@ export const buildDoughnut = (canvas, col, logs) => {
   })
 }
 
-/**
- * Unified bar chart builder.
- */
 export const buildBar = (canvas, col, logs, { horizontal = false, limit = THRESHOLDS.topBarLimit } = {}) => {
   const fm      = freqMap(logs, col.name)
   const entries = Object.entries(fm).sort((a, b) => b[1] - a[1]).slice(0, limit)
   const GRID    = getGrid()
   const TICK    = getTick()
-
-  const colors = horizontal
-    ? PALETTE.slice(0, entries.length)
-    : 'rgba(55,138,221,0.7)'
+  const colors  = horizontal ? PALETTE.slice(0, entries.length) : 'rgba(55,138,221,0.7)'
 
   return new Chart(canvas, {
     type: 'bar',
@@ -336,7 +305,6 @@ export const buildBarBreakdown = (canvas, col, logs, limit) =>
 export const buildTopBar = (canvas, col, logs, limit) =>
   buildBar(canvas, col, logs, { horizontal: false, limit })
 
-/** Timeline chart for date columns — last 30 days */
 export const buildTimeline = (canvas, col, logs, days = 30) => {
   const dayList = lastNDays(days)
   const counts  = dayList.map(d => logs.filter(l => getVal(l, col.name) === d).length)
@@ -349,15 +317,15 @@ export const buildTimeline = (canvas, col, logs, days = 30) => {
     data: {
       labels,
       datasets: [{
-        label:              col.name,
-        data:               counts,
-        borderColor:        '#378ADD',
-        backgroundColor:    'rgba(55,138,221,0.08)',
-        tension:            0.4,
-        pointRadius:        3,
+        label:                col.name,
+        data:                 counts,
+        borderColor:          '#378ADD',
+        backgroundColor:      'rgba(55,138,221,0.08)',
+        tension:              0.4,
+        pointRadius:          3,
         pointBackgroundColor: '#378ADD',
-        fill:               true,
-        borderWidth:        2,
+        fill:                 true,
+        borderWidth:          2,
       }],
     },
     options: {

@@ -31,8 +31,12 @@ export class DailyLogsController {
   // =========================
   @Post()
   @UseGuards(JwtAuthGuard)
-  create(@Body() data: any) {
-    return this.service.create(data)
+  create(@Body() body: any) {
+    const { _profileName, _moduleId, ...data } = body
+    return this.service.create(data, {
+      profileName: _profileName,
+      moduleId:    _moduleId,
+    })
   }
 
   // =========================
@@ -40,8 +44,12 @@ export class DailyLogsController {
   // =========================
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  update(@Param('id') id: string, @Body() data: any) {
-    return this.service.update(+id, data)
+  update(@Param('id') id: string, @Body() body: any) {
+    const { _profileName, _moduleId, ...data } = body
+    return this.service.update(+id, data, {
+      profileName: _profileName,
+      moduleId:    _moduleId,
+    })
   }
 
   // =========================
@@ -49,13 +57,19 @@ export class DailyLogsController {
   // =========================
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  remove(@Param('id') id: string) {
-    return this.service.delete(+id)
+  remove(@Param('id') id: string, @Body() body: any) {
+    return this.service.delete(+id, {
+      profileName: body?._profileName,
+      moduleId:    body?._moduleId,
+    })
   }
 
- @Get('department/:department')
-@UseGuards(JwtAuthGuard)
-findByDepartment(@Param('department') department: string) {
-  return this.service.findByModule(department)
-}
+  // =========================
+  // GET BY DEPARTMENT
+  // =========================
+  @Get('department/:department')
+  @UseGuards(JwtAuthGuard)
+  findByDepartment(@Param('department') department: string) {
+    return this.service.findByModule(department)
+  }
 }

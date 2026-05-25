@@ -148,7 +148,7 @@ if (isAdmin) {
   ]
 } else {
   menuItems.value = [
-    { id: 'user-dash', name: 'My Dashboard', path: '/dashboard/my-dashboard', icon: LayoutDashboard, isAdmin: false },
+    //{ id: 'user-dash', name: 'My Dashboard', path: '/dashboard/my-dashboard', icon: LayoutDashboard, isAdmin: false },
     ...modules
       .filter(mod => {
         try {

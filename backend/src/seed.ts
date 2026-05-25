@@ -7,7 +7,7 @@ export async function seedAdmin(dataSource: DataSource) {
   const userRepo = dataSource.getRepository(User);
   const profileRepo = dataSource.getRepository(Profile);
 
-  // 🔵 CHECK ADMIN USER
+
   let admin = await userRepo.findOne({
     where: { username: 'admin' },
   });
@@ -27,7 +27,7 @@ export async function seedAdmin(dataSource: DataSource) {
     console.log('ℹ️ Admin already exists');
   }
 
-  // 🔥 CHECK IF PROFILES EXIST
+
   const existingProfiles = await profileRepo.find({
     where: { user: { id: admin.id } },
   });

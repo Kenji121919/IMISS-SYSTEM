@@ -184,12 +184,21 @@
               </td>
             </tr>
 
-            <tr v-for="log in pagedLogs" :key="log.id">
+              <tr v-for="log in pagedLogs" :key="log.id">
               <td v-for="col in columns" :key="col.name">
-                <span v-if="getValue(log, col.name) !== '-'" class="cell-value">
-                  {{ getValue(log, col.name) }}
-                </span>
-                <span v-else class="cell-empty">—</span>
+                <template v-if="col.name === 'Ticket Number'">
+                  
+                    <a v-if="getValue(log, col.name) !== '-'"
+                    :href="`http://172.16.1.39:5001/viewJobRequest?job_id=${getValue(log, col.name)}`"
+                    target="_blank"
+                    class="ticket-link"
+                  >{{ getValue(log, col.name) }}</a>
+                  <span v-else class="cell-empty">—</span>
+                </template>
+                <template v-else>
+                  <span v-if="getValue(log, col.name) !== '-'" class="cell-value">{{ getValue(log, col.name) }}</span>
+                  <span v-else class="cell-empty">—</span>
+                </template>
               </td>
               <td class="td-actions no-print">
                 <button class="btn-icon-action edit" @click="openEdit(log)" title="Edit">✏</button>
@@ -640,15 +649,30 @@ const saveLog = async () => {
 
   saving.value = true
   try {
-    if (isEdit.value) {
-      await api.put(`/logs/${selectedId.value}`, { data: form.value })
-      showToast('Log updated', 'success')
-    } else {
-      await api.post('/logs', { moduleId: route.params.id, data: form.value })
-      showToast('Log added', 'success')
-    }
+    const activeProfile = JSON.parse(localStorage.getItem('activeProfile') || '{}')
+const meta = {
+  _profileName: activeProfile.name || null,
+  _moduleId:    Number(route.params.id),
+}
+
+if (isEdit.value) {
+  await api.put(`/logs/${selectedId.value}`, { data: form.value, ...meta })
+} else {
+  await api.post('/logs', { moduleId: route.params.id, data: form.value, ...meta })
+}
     showModal.value = false
     await loadLogs()
+
+    if (isEdit.value && form.value['Status'] === 'Done') {
+  const ticketNo = form.value['Ticket Number']
+  if (ticketNo) {
+    window.open(
+      `http://172.16.1.39:5001/viewJobRequest?job_id=${ticketNo}`,
+      '_blank'
+    )
+  }
+}
+
   } catch (err) {
     console.error(err)
     showToast('Failed to save log', 'error')
@@ -665,7 +689,13 @@ const askDelete = (log) => {
 
 const deleteLog = async () => {
   try {
-    await api.delete(`/logs/${selectedId.value}`)
+    const activeProfile = JSON.parse(localStorage.getItem('activeProfile') || '{}')
+await api.delete(`/logs/${selectedId.value}`, {
+  data: {
+    _profileName: activeProfile.name || null,
+    _moduleId:    Number(route.params.id),
+  }
+})
     showDelete.value = false
     await loadLogs()
     showToast('Log deleted', 'success')
@@ -1572,6 +1602,18 @@ watch(() => route.params.id, async (newId, oldId) => {
   font-size: 11px;
   color: #ef4444;
   font-weight: 500;
+}
+
+.ticket-link {
+  color: #2563eb;
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px dashed #93c5fd;
+  transition: color 0.15s, border-color 0.15s;
+}
+.ticket-link:hover {
+  color: #1d4ed8;
+  border-bottom-color: #1d4ed8;
 }
 
 /* ===== PRINT ===== */

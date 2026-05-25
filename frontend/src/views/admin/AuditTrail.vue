@@ -64,7 +64,7 @@
                 </span>
               </td>
               <td class="td-module">{{ moduleName(entry.moduleId) }}</td>
-              <td class="td-user">{{ entry.profileName || '—' }}</td>
+              <td class="td-user">{{ getProfileName(entry) }}</td>
               <td class="td-logid">#{{ entry.logId }}</td>
               <td class="td-diff">
                 <!-- CREATE: show all after fields -->
@@ -141,9 +141,10 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '@/api/axios'
 
-const auditLogs = ref([])
-const modules   = ref([])
-const loading   = ref(true)
+const auditLogs  = ref([])
+const modules    = ref([])
+const profiles   = ref([])
+const loading    = ref(true)
 const searchQuery   = ref('')
 const actionFilter  = ref('all')
 const moduleFilter  = ref('all')
@@ -160,12 +161,14 @@ const user = JSON.parse(localStorage.getItem('user') || '{}')
 
 onMounted(async () => {
   try {
-    const [auditRes, modulesRes] = await Promise.all([
-      api.get('/audit'),              
-      api.get(`/modules/${user.id}`)
+    const [auditRes, modulesRes, profilesRes] = await Promise.all([
+      api.get('/audit'),
+      api.get(`/modules/${user.id}`),
+      api.get(`/profiles/${user.id}`),   // ← fetch profiles to resolve names
     ])
     auditLogs.value = auditRes.data
     modules.value   = modulesRes.data
+    profiles.value  = profilesRes.data
   } catch (err) {
     console.error(err)
     showToast('Failed to load audit trail', 'error')
@@ -173,7 +176,26 @@ onMounted(async () => {
     loading.value = false
   }
 })
-const moduleName = (id) => modules.value.find(m => m.id === id)?.name ?? `Module ${id}`
+
+/* ─── HELPERS ─────────────────────────────────────────── */
+
+const moduleName = (id) =>
+  modules.value.find(m => m.id === id)?.name ?? `Module ${id}`
+
+/**
+ * Resolve "Done by" with multiple fallbacks:
+ * 1. entry.profileName  (if backend already joins it)
+ * 2. profiles list lookup by entry.profileId
+ * 3. '—' if nothing found
+ */
+const getProfileName = (entry) => {
+  if (entry.profileName) return entry.profileName
+  if (entry.profileId) {
+    const found = profiles.value.find(p => p.id === entry.profileId)
+    if (found) return found.name
+  }
+  return '—'
+}
 
 const actionLabel = (action) =>
   ({ CREATE: 'Created', UPDATE: 'Updated', DELETE: 'Deleted' })[action] ?? action
@@ -184,20 +206,25 @@ const formatDate = (dt) =>
 const formatTime = (dt) =>
   new Date(dt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
 
+/* ─── FILTERING ───────────────────────────────────────── */
+
 const filteredLogs = computed(() => auditLogs.value.filter(e => {
   if (actionFilter.value !== 'all' && e.action !== actionFilter.value) return false
   if (moduleFilter.value !== 'all' && e.moduleId !== moduleFilter.value) return false
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
-    const inUser  = (e.profileName ?? '').toLowerCase().includes(q)
-    const inDiff  = JSON.stringify(e.diff ?? {}).toLowerCase().includes(q)
-    const inAfter = JSON.stringify(e.after ?? {}).toLowerCase().includes(q)
-    if (!inUser && !inDiff && !inAfter) return false
+    const inUser   = getProfileName(e).toLowerCase().includes(q)
+    const inDiff   = JSON.stringify(e.diff   ?? {}).toLowerCase().includes(q)
+    const inAfter  = JSON.stringify(e.after  ?? {}).toLowerCase().includes(q)
+    const inBefore = JSON.stringify(e.before ?? {}).toLowerCase().includes(q)
+    if (!inUser && !inDiff && !inAfter && !inBefore) return false
   }
   return true
 }))
 
-const totalPages    = computed(() => Math.max(1, Math.ceil(filteredLogs.value.length / pageSize.value)))
+/* ─── PAGINATION ──────────────────────────────────────── */
+
+const totalPages     = computed(() => Math.max(1, Math.ceil(filteredLogs.value.length / pageSize.value)))
 const paginationFrom = computed(() => filteredLogs.value.length === 0 ? 0 : (currentPage.value - 1) * pageSize.value + 1)
 const paginationTo   = computed(() => Math.min(currentPage.value * pageSize.value, filteredLogs.value.length))
 
@@ -209,8 +236,8 @@ const pagedLogs = computed(() => {
 const visiblePages = computed(() => {
   const total = totalPages.value, cur = currentPage.value
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
-  if (cur <= 4)        return [1, 2, 3, 4, 5, '...', total]
-  if (cur >= total - 3) return [1, '...', total-4, total-3, total-2, total-1, total]
+  if (cur <= 4)          return [1, 2, 3, 4, 5, '...', total]
+  if (cur >= total - 3)  return [1, '...', total-4, total-3, total-2, total-1, total]
   return [1, '...', cur-1, cur, cur+1, '...', total]
 })
 </script>
