@@ -969,15 +969,97 @@ onBeforeUnmount(() => {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ─── RESPONSIVE ─────────────────────────────────────── */
+/* ─── RESPONSIVE ─────────────────────────────────────── */
 @media (max-width: 900px) {
   .charts-grid { grid-template-columns: 1fr; }
   .charts-grid .span-2 { grid-column: span 1; }
   .customize-grid { grid-template-columns: 1fr; }
 }
+
 @media (max-width: 768px) {
-  .page { padding: 16px; }
-  .topbar { flex-direction: column; }
-  .filter-row { width: 100%; }
-  .date-range-row { flex-wrap: wrap; }
+  /* Leave room for hamburger */
+  .page {
+    padding: 56px 12px 12px;
+  }
+
+  /* Topbar stacks */
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .topbar-left h1 { font-size: 16px; }
+  .topbar-left p  { font-size: 12px; }
+
+  /* Filter row wraps and stretches */
+  .filter-row {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Module selector full width */
+  .select-wrap {
+    width: 100%;
+  }
+  .select-wrap select {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Date trigger full width */
+  .date-picker-wrap {
+    width: 100%;
+  }
+  .date-trigger {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Date dropdown full width, left-anchored */
+  .date-dropdown {
+    left: 0;
+    right: 0;
+    min-width: unset;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Customize and clear buttons row */
+  .btn-customize,
+  .clear-btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  /* Stat cards — 2 per row on mobile */
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .stat-value { font-size: 20px; }
+  .stat-card  { padding: 12px; }
+
+  /* Charts single column */
+  .charts-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .charts-grid .span-2 { grid-column: span 1; }
+
+  /* Chart cards */
+  .chart-card { padding: 12px; }
+  .chart-title { font-size: 12px; }
+
+  /* Customize panel */
+  .customize-panel { padding: 12px; }
+  .customize-grid  { grid-template-columns: 1fr; }
+  .customize-row   { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .customize-select { width: 100%; }
+
+  /* Module breakdown chart shorter on mobile */
+  .chart-card.full div[style] {
+    height: 160px !important;
+  }
 }
 </style>

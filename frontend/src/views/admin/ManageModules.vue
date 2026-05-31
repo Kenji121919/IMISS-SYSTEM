@@ -43,9 +43,17 @@
               </div>
             </div>
             <div class="item-actions" @click.stop>
-              <button class="btn-icon-action edit" @click="openEdit(m)" title="Edit">✏</button>
-              <button class="btn-icon-action danger" @click="askDelete(m)" title="Delete">🗑</button>
-            </div>
+  <button class="action-btn edit" @click="openEdit(m)" title="Edit">
+    <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+      <path d="M11 2l3 3-8 8H3v-3l8-8z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    </svg>
+  </button>
+  <button class="action-btn danger" @click="askDelete(m)" title="Delete">
+    <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+      <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+</div>
           </div>
         </div>
 
@@ -108,14 +116,71 @@
                   <option value="date">Date</option>
                   <option value="time">Time</option>
                   <option value="select">Dropdown</option>
+                  <option value="link">Link</option>
                 </select>
 
+                <!-- Dropdown options with colors -->
+<div v-if="element.type === 'select'" class="options-wrap">
+
+  <!-- Existing options (editable) -->
+  <div
+    v-for="(opt, oi) in element.parsedOptions"
+    :key="oi"
+    class="option-row"
+  >
+    <input
+      v-model="opt.label"
+      class="col-input"
+      placeholder="Option label"
+    />
+    <input
+      type="color"
+      v-model="opt.color"
+      class="color-picker"
+      title="Pick color"
+    />
+    <button class="btn-remove" @click="removeOption(element, oi)">✕</button>
+  </div>
+
+  <!-- Footer actions -->
+  <div class="options-actions">
+    <button class="btn-add-opt" @click="addOption(element)">+ Add option</button>
+
+    <!-- Copy from button — only show if other select columns exist -->
+    <div class="copy-wrap" v-if="otherSelectColumns(element).length">
+      <button
+        class="btn-copy-opt"
+        @click="toggleCopyMenu(element.uid)"
+      >⎘ Copy from…</button>
+
+      <!-- Dropdown menu -->
+      <div v-if="copyMenuOpen === element.uid" class="copy-menu">
+        <div
+          v-for="other in otherSelectColumns(element)"
+          :key="other.uid"
+          class="copy-menu-item"
+          @click="copyOptionsFrom(element, other)"
+        >
+          <span class="copy-menu-name">{{ other.name || '(unnamed)' }}</span>
+          <span class="copy-menu-preview">
+            {{ other.parsedOptions.slice(0, 3).map(o => o.label).join(', ') }}
+            {{ other.parsedOptions.length > 3 ? '…' : '' }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+                <!-- Link base URL -->
                 <input
-                  v-if="element.type === 'select'"
-                  v-model="element.optionsInput"
+                  v-else-if="element.type === 'link'"
+                  v-model="element.baseUrl"
                   class="col-input"
-                  placeholder="Yes,No,Pending"
+                  placeholder="http://172.16.1.39:5001/list?id="
                 />
+
                 <div v-else></div>
 
                 <div class="col-badges">
@@ -152,7 +217,7 @@
               :class="['chip', { active: editModule.allowedProfiles?.map(Number).includes(Number(p.id)) }]"
               @click="toggleProfile(p.id)"
             >
-              <span v-if="editModule.allowedProfiles?.includes(p.id)" class="chip-check">✓</span>
+              <span v-if="editModule.allowedProfiles?.map(Number).includes(Number(p.id))" class="chip-check">✓</span>
               {{ p.name }}
             </div>
           </div>
@@ -214,7 +279,6 @@
 import { ref, onMounted } from 'vue'
 import draggable from 'vuedraggable'
 import api from '@/api/axios'
-
 
 /* ================= STATE ================= */
 const modules = ref([])
@@ -282,8 +346,8 @@ const openCreate = () => {
       uid: Date.now(),
       name: '',
       type: 'varchar',
-      optionsInput: '',
-      options: [],
+      parsedOptions: [],
+      baseUrl: '',
       filterable: false,
       required: false
     }],
@@ -304,7 +368,15 @@ const openEdit = (m) => {
       ? parsedColumns.map(col => ({
           uid: Date.now() + Math.random(),
           ...col,
-          optionsInput: Array.isArray(col.options) ? col.options.join(',') : ''
+          parsedOptions: (() => {
+  const raw = typeof col.options === 'string'
+    ? JSON.parse(col.options)
+    : (col.options || [])
+  return raw.map(o =>
+    typeof o === 'object' ? o : { label: o, color: '#6b7280' }
+  )
+})(),
+          baseUrl: col.baseUrl || ''
         }))
       : [],
     allowedProfiles: m.allowedProfiles?.map(p => Number(typeof p === 'object' ? p.id : p)) || []
@@ -322,8 +394,8 @@ const addEditColumn = () => {
     uid: Date.now() + Math.random(),
     name: '',
     type: 'varchar',
-    optionsInput: '',
-    options: [],
+    parsedOptions: [],
+    baseUrl: '',
     filterable: false,
     required: false
   })
@@ -333,6 +405,37 @@ const removeEditColumn = (i) => {
   editModule.value.columns.splice(i, 1)
 }
 
+/* ================= DROPDOWN OPTIONS ================= */
+const addOption = (col) => {
+  if (!col.parsedOptions) col.parsedOptions = []
+  col.parsedOptions.push({ label: '', color: '#6b7280' })
+}
+
+const removeOption = (col, index) => {
+  col.parsedOptions.splice(index, 1)
+}
+const copyMenuOpen = ref(null)
+
+const toggleCopyMenu = (uid) => {
+  copyMenuOpen.value = copyMenuOpen.value === uid ? null : uid
+}
+
+const otherSelectColumns = (current) => {
+  return editModule.value.columns.filter(
+    col => col.uid !== current.uid &&
+           col.type === 'select' &&
+           col.parsedOptions?.length > 0
+  )
+}
+
+const copyOptionsFrom = (target, source) => {
+  // Deep copy — editing one won't affect the other
+  target.parsedOptions = source.parsedOptions.map((o) => ({
+    label: o.label,
+    color: o.color,
+  }))
+  copyMenuOpen.value = null
+}
 /* ================= PROFILES ================= */
 const toggleProfile = (id) => {
   const list = editModule.value.allowedProfiles
@@ -348,8 +451,9 @@ const formatColumns = (columns) =>
     type: col.type,
     filterable: col.filterable || false,
     required: col.required || false,
+    baseUrl: col.type === 'link' ? (col.baseUrl || '') : undefined,
     options: col.type === 'select'
-      ? col.optionsInput.split(',').map(o => o.trim()).filter(Boolean)
+      ? (col.parsedOptions || []).map(o => ({ label: o.label, color: o.color }))
       : []
   }))
 
@@ -420,8 +524,6 @@ const cancelDelete = () => {
   deleteTarget.value = null
   showDeleteModal.value = false
 }
-
-
 </script>
 
 <style scoped>
@@ -652,7 +754,7 @@ const cancelDelete = () => {
   display: grid;
   grid-template-columns: 20px 1fr 100px 1fr auto auto;
   gap: 8px;
-  align-items: center;
+  align-items: start;
   padding: 8px 10px;
   border: 1px solid #eef2f7;
   border-radius: 10px;
@@ -666,6 +768,7 @@ const cancelDelete = () => {
   color: #d1d5db;
   user-select: none;
   text-align: center;
+  padding-top: 6px;
 }
 .drag-handle:active { cursor: grabbing; }
 
@@ -693,7 +796,7 @@ const cancelDelete = () => {
   width: 100%;
 }
 
-.col-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+.col-badges { display: flex; gap: 4px; flex-wrap: wrap; padding-top: 4px; }
 
 .badge {
   font-size: 10px;
@@ -722,6 +825,7 @@ const cancelDelete = () => {
   align-items: center;
   justify-content: center;
   transition: background 0.15s;
+  flex-shrink: 0;
 }
 .btn-remove:hover { background: #fee2e2; }
 
@@ -741,6 +845,44 @@ const cancelDelete = () => {
   margin-top: 2px;
 }
 .btn-add-col:hover { background: #f9fafb; color: #374151; border-color: #9ca3af; }
+
+/* ===== DROPDOWN OPTIONS ===== */
+.options-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.color-picker {
+  width: 32px;
+  height: 28px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 2px;
+  cursor: pointer;
+  background: white;
+  flex-shrink: 0;
+}
+
+.btn-add-opt {
+  font-size: 11px;
+  color: #6b7280;
+  background: none;
+  border: 1px dashed #d1d5db;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  margin-top: 2px;
+  transition: all 0.15s;
+  width: fit-content;
+}
+.btn-add-opt:hover { background: #f9fafb; color: #374151; }
 
 /* ===== PROFILE CHIPS ===== */
 .profile-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -847,5 +989,238 @@ const cancelDelete = () => {
   padding: 14px 20px;
   border-top: 1px solid #eef2f7;
   background: #fafafa;
+}
+
+.copy-from-wrap {
+  margin-bottom: 6px;
+}
+
+.copy-from-select {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px dashed #d1d5db;
+  border-radius: 7px;
+  font-size: 11px;
+  color: #6b7280;
+  background: white;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s;
+}
+
+.copy-from-select:hover {
+  border-color: #9ca3af;
+  color: #374151;
+}
+
+.copy-from-select:focus {
+  border-color: #3b82f6;
+  color: #111827;
+}
+
+.options-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  position: relative;
+}
+
+.btn-copy-opt {
+  font-size: 11px;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-copy-opt:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.copy-wrap {
+  position: relative;
+}
+
+.copy-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  z-index: 100;
+  min-width: 200px;
+  overflow: hidden;
+}
+
+.copy-menu-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: background 0.15s;
+  border-bottom: 1px solid #f1f5f9;
+}
+.copy-menu-item:last-child {
+  border-bottom: none;
+}
+.copy-menu-item:hover {
+  background: #eff6ff;
+}
+
+.copy-menu-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #111827;
+}
+
+.copy-menu-preview {
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== MATURE ACTION BUTTONS ===== */
+.action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.action-btn:hover        { background: #f3f4f6; color: #374151; border-color: #e5e7eb; }
+.action-btn.edit:hover   { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.action-btn.danger:hover { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  /* Leave room for hamburger */
+  .page {
+    padding: 56px 12px 12px;
+  }
+
+  /* Topbar stacks */
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .topbar h1 { font-size: 16px; }
+  .topbar p  { font-size: 12px; }
+  .topbar > div:last-child {
+    width: 100%;
+  }
+  .btn-primary {
+    width: 100% !important;
+    max-width: 100% !important;
+    justify-content: center;
+  }
+
+  /* Two-col stacks to single */
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+
+  /* Editor panel gets full height scroll */
+  .editor-panel {
+    max-height: unset;
+  }
+
+  /* Column row stacks on mobile */
+  .col-row {
+    grid-template-columns: 20px 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 6px;
+  }
+
+  /* drag handle stays col 1 row 1 */
+  .drag-handle {
+    grid-column: 1;
+    grid-row: 1;
+    padding-top: 8px;
+  }
+
+  /* name input takes rest of row 1 */
+  .col-input:first-of-type {
+    grid-column: 2 / 4;
+    grid-row: 1;
+  }
+
+  /* type select spans row 2 */
+  .col-select {
+    grid-column: 2 / 4;
+    grid-row: 2;
+  }
+
+  /* options/link/empty spans row 3 */
+  .options-wrap,
+  .col-row > .col-input:not(:first-of-type),
+  .col-row > div:empty {
+    grid-column: 2 / 4;
+    grid-row: 3;
+  }
+
+  /* badges and remove on same row */
+  .col-badges {
+    grid-column: 2;
+    grid-row: 4;
+    padding-top: 0;
+  }
+
+  .btn-remove {
+    grid-column: 3;
+    grid-row: 4;
+    justify-self: end;
+  }
+
+  /* Profile chips wrap nicely */
+  .profile-chips {
+    gap: 6px;
+  }
+
+  /* Editor footer */
+  .editor-footer {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
+  /* Copy menu opens upward with full width */
+  .copy-menu {
+    left: 0;
+    right: 0;
+    min-width: unset;
+    width: 100%;
+  }
+
+  /* Placeholder shorter on mobile */
+  .placeholder-panel {
+    min-height: 120px;
+  }
+
+  /* Modal slides up from bottom */
+  .modal-backdrop {
+    align-items: flex-end;
+  }
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+  }
 }
 </style>

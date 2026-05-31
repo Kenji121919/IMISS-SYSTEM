@@ -24,7 +24,7 @@ import { AuditModule } from './audit/audit.module'
       password: '',
       database: 'imisslogs_db',
       entities: [User, Profile, ModuleEntity, Log,  ModuleColumn, AuditLog],
-      synchronize: false,
+      synchronize: true,
     }),
 
     AuthModule,

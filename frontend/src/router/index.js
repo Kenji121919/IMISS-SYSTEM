@@ -3,8 +3,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import ProfilesView from '../views/ProfilesView.vue'
-
 import DashboardLayout from '../views/dashboard/Dashboard.vue'
+import AuthCallback from '../views/AuthCallback.vue'
+import.meta.env.VITE_API_URL
 
 const routes = [
   {
@@ -24,6 +25,11 @@ const routes = [
     meta: { requiresAuth: true },
   },
 
+  {
+  path: '/auth/callback',
+  name: 'auth-callback',
+  component: AuthCallback,
+  },
   /* =========================
      DASHBOARD (DYNAMIC SYSTEM)
   ========================= */

@@ -4,8 +4,10 @@
     <!-- ===== TOPBAR ===== -->
     <div class="topbar">
       <div class="logo-wrap">
-        <div class="logo-mark">IM</div>
-        <span class="logo-text">IMISS</span>
+        <div class="logo-mark">
+          {{ orgInitials }}
+        </div>
+        <span class="logo-text">{{ organizationName || 'IMISS' }}</span>
       </div>
       <button class="btn-logout" @click="logout">
         <LogOut :size="14" />
@@ -54,23 +56,16 @@
             <button class="btn-ghost-sm" @click="closeModal">✕</button>
           </div>
 
-          <!-- ERROR -->
           <transition name="error-slide">
             <div v-if="errorMessage" class="error-box">
               <span>✕</span> {{ errorMessage }}
             </div>
           </transition>
 
-          <!-- PIN DOTS -->
           <div class="pin-dots">
-            <span
-              v-for="i in 4"
-              :key="i"
-              :class="['dot', { filled: pin.length >= i }]"
-            ></span>
+            <span v-for="i in 4" :key="i" :class="['dot', { filled: pin.length >= i }]"></span>
           </div>
 
-          <!-- PIN INPUT -->
           <input
             v-model="pin"
             type="password"
@@ -98,7 +93,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { LogOut } from 'lucide-vue-next'
 import api from '@/api/axios'
 import { useRouter } from 'vue-router'
@@ -113,6 +108,19 @@ const errorMessage = ref('')
 const shakeError = ref(false)
 const pinInput = ref(null)
 
+/* ===== ORGANIZATION ===== */
+const organizationName = ref('')
+
+const orgInitials = computed(() => {
+  const name = organizationName.value || 'IMISS'
+  return name
+    .split(' ')
+    .map(w => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+})
+
 /* ===== AVATAR COLOR ===== */
 const COLORS = [
   '#6366f1','#0ea5e9','#10b981','#f59e0b',
@@ -124,10 +132,12 @@ const avatarColor = (name) => name ? COLORS[name.charCodeAt(0) % COLORS.length] 
 onMounted(async () => {
   try {
     const token = localStorage.getItem('token')
-    const user = localStorage.getItem('user')
+    const user  = localStorage.getItem('user')
     if (!token || !user) { profiles.value = []; return }
 
     const parsedUser = JSON.parse(user)
+    organizationName.value = parsedUser.organizationName || ''
+
     const res = await api.get(`/profiles/${parsedUser.id}`)
     profiles.value = res.data
   } catch (err) {
@@ -218,7 +228,6 @@ const logout = () => {
 </script>
 
 <style scoped>
-/* ===== PAGE ===== */
 .page {
   min-height: 100vh;
   background: #111827;
@@ -229,7 +238,6 @@ const logout = () => {
   padding-bottom: 60px;
 }
 
-/* ===== TOPBAR ===== */
 .topbar {
   width: 100%;
   display: flex;
@@ -258,13 +266,18 @@ const logout = () => {
   font-weight: 800;
   color: white;
   letter-spacing: 0.5px;
+  flex-shrink: 0;
 }
 
 .logo-text {
   font-size: 15px;
   font-weight: 700;
   color: white;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
 }
 
 .btn-logout {
@@ -281,6 +294,7 @@ const logout = () => {
   cursor: pointer;
   transition: all 0.15s;
   font-family: Inter, Arial, sans-serif;
+  flex-shrink: 0;
 }
 .btn-logout:hover {
   background: rgba(239,68,68,0.1);
@@ -288,7 +302,6 @@ const logout = () => {
   color: #ef4444;
 }
 
-/* ===== HERO ===== */
 .hero {
   text-align: center;
   margin: 56px 0 40px;
@@ -306,7 +319,6 @@ const logout = () => {
   margin: 0;
 }
 
-/* ===== PROFILE GRID ===== */
 .profile-grid {
   display: flex;
   flex-wrap: wrap;
@@ -318,7 +330,6 @@ const logout = () => {
   box-sizing: border-box;
 }
 
-/* ===== PROFILE CARD ===== */
 .profile-card {
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
@@ -340,7 +351,6 @@ const logout = () => {
   box-shadow: 0 12px 32px rgba(0,0,0,0.3);
 }
 
-/* Avatar */
 .avatar {
   width: 56px;
   height: 56px;
@@ -353,13 +363,8 @@ const logout = () => {
   color: white;
 }
 
-.profile-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: white;
-}
-
-.profile-hint { font-size: 11px; }
+.profile-name { font-size: 14px; font-weight: 600; color: white; }
+.profile-hint  { font-size: 11px; }
 
 .admin-badge {
   background: rgba(251,191,36,0.15);
@@ -371,11 +376,8 @@ const logout = () => {
   font-weight: 600;
 }
 
-.pin-hint {
-  color: rgba(255,255,255,0.25);
-}
+.pin-hint { color: rgba(255,255,255,0.25); }
 
-/* ===== MODAL BACKDROP ===== */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -387,7 +389,6 @@ const logout = () => {
   backdrop-filter: blur(4px);
 }
 
-/* ===== MODAL ===== */
 .modal {
   background: white;
   border-radius: 18px;
@@ -418,17 +419,8 @@ const logout = () => {
   flex-shrink: 0;
 }
 
-.modal-header h3 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: #111827;
-}
-.modal-header p {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: #9ca3af;
-}
+.modal-header h3 { margin: 0; font-size: 15px; font-weight: 600; color: #111827; }
+.modal-header p  { margin: 2px 0 0; font-size: 12px; color: #9ca3af; }
 
 .btn-ghost-sm {
   margin-left: auto;
@@ -443,10 +435,8 @@ const logout = () => {
 }
 .btn-ghost-sm:hover { background: #f3f4f6; color: #374151; }
 
-/* ERROR */
 .error-box {
-  margin: 0 20px;
-  margin-top: 14px;
+  margin: 14px 20px 0;
   background: #fef2f2;
   border: 1px solid #fecaca;
   color: #dc2626;
@@ -461,7 +451,6 @@ const logout = () => {
 .error-slide-enter-active, .error-slide-leave-active { transition: all 0.2s ease; }
 .error-slide-enter-from, .error-slide-leave-to { opacity: 0; transform: translateY(-6px); }
 
-/* PIN DOTS */
 .pin-dots {
   display: flex;
   justify-content: center;
@@ -469,15 +458,13 @@ const logout = () => {
   margin: 20px 0 0;
 }
 .dot {
-  width: 12px;
-  height: 12px;
+  width: 12px; height: 12px;
   border-radius: 50%;
   background: #e5e7eb;
   transition: background 0.2s;
 }
 .dot.filled { background: #3b82f6; }
 
-/* PIN INPUT */
 .pin-input {
   display: block;
   width: calc(100% - 40px);
@@ -497,7 +484,6 @@ const logout = () => {
 }
 .pin-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
 
-/* MODAL FOOTER */
 .modal-footer {
   display: flex;
   justify-content: flex-end;
@@ -536,7 +522,6 @@ const logout = () => {
 .btn-primary:hover    { background: #1f2937; }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* ===== SHAKE ANIMATION ===== */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   20%       { transform: translateX(-8px); }
@@ -546,13 +531,12 @@ const logout = () => {
 }
 .shake { animation: shake 0.35s ease; }
 
-/* ===== MODAL TRANSITION ===== */
 .modal-fade-enter-active, .modal-fade-leave-active { transition: all 0.2s ease; }
 .modal-fade-enter-from, .modal-fade-leave-to { opacity: 0; transform: scale(0.96); }
 
-/* ===== RESPONSIVE ===== */
 @media (max-width: 480px) {
   .hero h1 { font-size: 20px; }
   .profile-card { width: 130px; padding: 22px 14px 18px; }
+  .logo-text { max-width: 140px; }
 }
 </style>

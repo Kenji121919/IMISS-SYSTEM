@@ -20,7 +20,6 @@
           <span class="btn-icon-left">🖨</span> Print
         </button>
 
-        <!-- FILTER TOGGLE BUTTON -->
         <button
           :class="['btn-filter', { active: showFilters || activeFilterCount > 0 }]"
           @click="showFilters = !showFilters"
@@ -37,7 +36,7 @@
       </div>
     </div>
 
-    <!-- ================= FILTER PANEL (collapsible) ================= -->
+    <!-- ================= FILTER PANEL ================= -->
     <transition name="filter-slide">
       <div v-if="showFilters && columns.length" class="filter-bar-panel">
         <div class="filter-bar">
@@ -77,21 +76,11 @@
                   <div class="date-dropdown-row">
                     <div class="date-dropdown-field">
                       <label class="date-dropdown-label">From</label>
-                      <input
-                        type="date"
-                        v-model="dateFilters[col.name].from"
-                        class="date-dropdown-input"
-                        :max="dateFilters[col.name].to || undefined"
-                      />
+                      <input type="date" v-model="dateFilters[col.name].from" class="date-dropdown-input" :max="dateFilters[col.name].to || undefined" />
                     </div>
                     <div class="date-dropdown-field">
                       <label class="date-dropdown-label">To</label>
-                      <input
-                        type="date"
-                        v-model="dateFilters[col.name].to"
-                        class="date-dropdown-input"
-                        :min="dateFilters[col.name].from || undefined"
-                      />
+                      <input type="date" v-model="dateFilters[col.name].to" class="date-dropdown-input" :min="dateFilters[col.name].from || undefined" />
                     </div>
                   </div>
                   <div class="date-dropdown-footer">
@@ -102,15 +91,19 @@
               </div>
             </template>
 
-            <!-- SELECT FILTER -->
+            <!-- SELECT FILTER — options are now { label, color } objects -->
             <div v-else-if="col.type === 'select'" class="fl-wrap fl-select">
               <select
                 v-model="activeFilters[col.name]"
                 class="fl-input fl-input-select"
                 :id="`filter-select-${col.name}`"
               >
-                
-                <option v-for="opt in col.options" :key="opt" :value="opt">{{ opt }}</option>
+                <option value="" disabled selected>All</option>
+                <option
+                  v-for="opt in normalizeOptions(col.options)"
+                  :key="opt.label"
+                  :value="opt.label"
+                >{{ opt.label }}</option>
               </select>
               <label :for="`filter-select-${col.name}`" class="fl-label fl-label-select">{{ col.name }}</label>
               <button
@@ -137,10 +130,8 @@
             </div>
 
           </template>
-
         </div>
 
-        <!-- FILTER PANEL FOOTER -->
         <div class="filter-footer">
           <button v-if="hasActiveFilters" class="btn-clear" @click="clearFilters">✕ Clear filters</button>
           <button class="btn-ghost-sm" @click="showFilters = false">Close</button>
@@ -184,29 +175,51 @@
               </td>
             </tr>
 
-              <tr v-for="log in pagedLogs" :key="log.id">
+            <tr v-for="log in pagedLogs" :key="log.id">
               <td v-for="col in columns" :key="col.name">
-                <template v-if="col.name === 'Ticket Number'">
-                  
-                    <a v-if="getValue(log, col.name) !== '-'"
-                    :href="`http://172.16.1.39:5001/viewJobRequest?job_id=${getValue(log, col.name)}`"
+
+                <!-- LINK column type -->
+                <template v-if="col.type === 'link'">
+                  <a
+                    v-if="getValue(log, col.name) && getValue(log, col.name) !== '-'"
+                    :href="(col.baseUrl || '') + getValue(log, col.name)"
                     target="_blank"
-                    class="ticket-link"
+                    class="cell-link"
                   >{{ getValue(log, col.name) }}</a>
                   <span v-else class="cell-empty">—</span>
                 </template>
-                <template v-else>
+
+                <!-- SELECT column type — colored badge -->
+                <template v-else-if="col.type === 'select'">
                   <span
-                    v-if="getValue(log, col.name) !== '-'"
-                    :class="col.name === 'Status' ? `status-badge status-${getValue(log, col.name).toLowerCase().replace(/ /g, '-')}` : 'cell-value'"
+                    v-if="getValue(log, col.name) && getValue(log, col.name) !== '-'"
+                    class="select-badge"
+                    :style="getOptionStyle(col, getValue(log, col.name))"
                   >{{ getValue(log, col.name) }}</span>
                   <span v-else class="cell-empty">—</span>
                 </template>
+
+                <!-- ALL OTHER column types -->
+                <template v-else>
+                  <span v-if="getValue(log, col.name) !== '-'" class="cell-value">
+                    {{ getValue(log, col.name) }}
+                  </span>
+                  <span v-else class="cell-empty">—</span>
+                </template>
+
               </td>
               <td class="td-actions no-print">
-                <button class="btn-icon-action edit" @click="openEdit(log)" title="Edit">✏</button>
-                <button class="btn-icon-action danger" @click="askDelete(log)" title="Delete">🗑</button>
-              </td>
+  <button class="action-btn edit" @click="openEdit(log)" title="Edit">
+    <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+      <path d="M11 2l3 3-8 8H3v-3l8-8z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    </svg>
+  </button>
+  <button class="action-btn danger" @click="askDelete(log)" title="Delete">
+    <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+      <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+</td>
             </tr>
           </tbody>
         </table>
@@ -234,11 +247,7 @@
           <button class="page-btn" @click="currentPage--" :disabled="currentPage === 1" title="Previous">‹</button>
 
           <template v-for="p in visiblePages" :key="p">
-            <button
-              v-if="p !== '...'"
-              :class="['page-btn', { active: p === currentPage }]"
-              @click="currentPage = p"
-            >{{ p }}</button>
+            <button v-if="p !== '...'" :class="['page-btn', { active: p === currentPage }]" @click="currentPage = p">{{ p }}</button>
             <span v-else class="page-ellipsis">…</span>
           </template>
 
@@ -274,21 +283,36 @@
               <span v-if="col.required" class="required-star">*</span>
             </label>
 
+            <!-- SELECT input -->
             <select
               v-if="col.type === 'select'"
               v-model="form[col.name]"
               :class="['form-input', { 'input-error': fieldErrors[col.name] }]"
             >
               <option value="" disabled selected>Select option</option>
-              <option v-for="opt in col.options" :key="opt" :value="opt">{{ opt }}</option>
+              <option
+                v-for="opt in normalizeOptions(col.options)"
+                :key="opt.label"
+                :value="opt.label"
+              >{{ opt.label }}</option>
             </select>
 
+            <!-- LINK input — plain text, user enters the value (e.g. ticket number) -->
+            <input
+              v-else-if="col.type === 'link'"
+              v-model="form[col.name]"
+              type="text"
+              :class="['form-input', { 'input-error': fieldErrors[col.name] }]"
+              :placeholder="`Enter ${col.name.toLowerCase()}`"
+            />
+
+            <!-- ALL OTHER inputs -->
             <input
               v-else
               v-model="form[col.name]"
               :type="inputType(col.type)"
               :class="['form-input', { 'input-error': fieldErrors[col.name] }]"
-              :placeholder="col.type === 'date' ? '' : `Enter ${col.name.toLowerCase()}`"
+              :placeholder="col.type === 'date' || col.type === 'time' ? '' : `Enter ${col.name.toLowerCase()}`"
             />
 
             <span v-if="fieldErrors[col.name]" class="error-msg">
@@ -334,31 +358,20 @@ import api from '@/api/axios'
 
 const route = useRoute()
 
-/* ================= CLICK OUTSIDE DIRECTIVE ================= */
-const vClickOutside = {
-  mounted(el, binding) {
-    el._clickOutside = (e) => { if (!el.contains(e.target)) binding.value(e) }
-    document.addEventListener('click', el._clickOutside)
-  },
-  unmounted(el) {
-    document.removeEventListener('click', el._clickOutside)
-  }
-}
-
-const module = ref(null)
-const columns = ref([])
-const logs = ref([])
+const module    = ref(null)
+const columns   = ref([])
+const logs      = ref([])
 const showModal = ref(false)
-const showDelete = ref(false)
+const showDelete  = ref(false)
 const showFilters = ref(false)
-const isEdit = ref(false)
-const selectedId = ref(null)
-const form = ref({})
+const isEdit      = ref(false)
+const selectedId  = ref(null)
+const form        = ref({})
 const fieldErrors = ref({})
 const searchQuery = ref('')
 const activeFilters = ref({})
-const dateFilters = ref({})
-const saving = ref(false)
+const dateFilters   = ref({})
+const saving        = ref(false)
 
 /* ================= SORT ================= */
 const sortKey = ref('')
@@ -374,14 +387,11 @@ const setSort = (colName) => {
   currentPage.value = 1
 }
 
-const clearSort = () => {
-  sortKey.value = ''
-  sortDir.value = 'asc'
-}
+const clearSort = () => { sortKey.value = ''; sortDir.value = 'asc' }
 
 /* ================= PAGINATION ================= */
 const currentPage = ref(1)
-const pageSize = ref(25)
+const pageSize    = ref(25)
 
 /* ================= TOAST ================= */
 const toast = ref({ show: false, message: '', type: 'success' })
@@ -390,45 +400,67 @@ const showToast = (message, type = 'success') => {
   setTimeout(() => { toast.value.show = false }, 2500)
 }
 
-/* ================= SAFE PARSE ================= */
+/* ================= HELPERS ================= */
 const safeParse = (val) => {
   if (!val) return []
   if (typeof val === 'object') return val
   try { return JSON.parse(val) } catch { return [] }
 }
 
-/* ================= DEBOUNCE ================= */
-const debounce = (fn, delay) => {
-  let timer = null
-  return (...args) => {
-    clearTimeout(timer)
-    timer = setTimeout(() => fn(...args), delay)
+/**
+ * Normalize options — stored as either:
+ *   - old format: ["Yes", "No"]
+ *   - new format: [{ label: "Yes", color: "#22c55e" }, ...]
+ * Always returns array of { label, color }
+ */
+const normalizeOptions = (options) => {
+  if (!Array.isArray(options)) return []
+  return options.map(o =>
+    typeof o === 'object' && o !== null
+      ? o
+      : { label: String(o), color: '#6b7280' }
+  )
+}
+
+/**
+ * Returns inline style for a select badge based on its configured color.
+ */
+const getOptionStyle = (col, value) => {
+  const opts = normalizeOptions(col.options)
+  const opt  = opts.find(o => o.label === value)
+  const color = opt?.color || '#6b7280'
+  return {
+    background: color + '22',
+    color:      color,
+    border:     `1px solid ${color}55`,
   }
 }
 
-const debouncedSearch = ref('')
+/* ================= DEBOUNCE ================= */
+const debounce = (fn, delay) => {
+  let timer = null
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), delay) }
+}
+
+const debouncedSearch  = ref('')
 const debouncedFilters = ref({})
-const debouncedDates = ref({})
+const debouncedDates   = ref({})
 
 const applyDebounced = debounce(() => {
-  debouncedSearch.value   = searchQuery.value
-  debouncedFilters.value  = { ...activeFilters.value }
-  debouncedDates.value    = JSON.parse(JSON.stringify(dateFilters.value))
+  debouncedSearch.value  = searchQuery.value
+  debouncedFilters.value = { ...activeFilters.value }
+  debouncedDates.value   = JSON.parse(JSON.stringify(dateFilters.value))
   currentPage.value = 1
 }, 300)
 
 watch([searchQuery, activeFilters, dateFilters], applyDebounced, { deep: true })
+
 /* ================= DATE PICKER ================= */
 const openDatePicker = ref(null)
-
 const todayStr = () => new Date().toISOString().slice(0, 10)
 
 const toggleDatePicker = (colName) => {
   openDatePicker.value = openDatePicker.value === colName ? null : colName
-}
-
-const closeDatePicker = (colName) => {
-  if (openDatePicker.value === colName) openDatePicker.value = null
 }
 
 const clearDateFilter = (colName) => {
@@ -446,8 +478,8 @@ const setToday = (colName) => {
 
 const setThisMonth = (colName) => {
   const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const y   = now.getFullYear()
+  const m   = String(now.getMonth() + 1).padStart(2, '0')
   const lastDay = new Date(y, now.getMonth() + 1, 0).getDate()
   dateFilters.value[colName].from = `${y}-${m}-01`
   dateFilters.value[colName].to   = `${y}-${m}-${lastDay}`
@@ -456,9 +488,9 @@ const setThisMonth = (colName) => {
 
 const dateRangeLabel = (colName) => {
   const { from, to } = dateFilters.value[colName] || {}
-  if (from && to)   return `${from} → ${to}`
-  if (from)         return `From ${from}`
-  if (to)           return `Until ${to}`
+  if (from && to) return `${from} → ${to}`
+  if (from)       return `From ${from}`
+  if (to)         return `Until ${to}`
   return colName
 }
 
@@ -472,7 +504,6 @@ const initFilters = () => {
       activeFilters.value[col.name] = ''
     }
   })
-
   debouncedFilters.value = { ...activeFilters.value }
   debouncedDates.value   = JSON.parse(JSON.stringify(dateFilters.value))
   debouncedSearch.value  = ''
@@ -486,7 +517,9 @@ const loadModule = async () => {
   const parsedColumns = safeParse(res.data.columns)
   columns.value = parsedColumns.map(col => ({
     ...col,
-    options: typeof col.options === 'string' ? safeParse(col.options) : col.options || []
+    // options stay as-is (array of strings or objects); normalizeOptions handles both
+    options: typeof col.options === 'string' ? safeParse(col.options) : (col.options || []),
+    baseUrl: col.baseUrl || ''
   }))
 
   activeFilters.value = {}
@@ -500,9 +533,7 @@ const normalizeLog = (log) => {
   if (log.values && Array.isArray(log.values)) {
     log.values.forEach(v => {
       const colName = v.column?.name ?? v.column_name ?? v.column
-      if (colName && typeof colName === 'string') {
-        data[colName] = v.value
-      }
+      if (colName && typeof colName === 'string') data[colName] = v.value
     })
   }
   if (log.data && typeof log.data === 'object') Object.assign(data, log.data)
@@ -525,21 +556,18 @@ let pollInterval = null
 
 const startPolling = () => {
   pollInterval = setInterval(async () => {
-    if (document.hidden) return // skip if tab not visible
+    if (document.hidden) return
     try {
       const res = await api.get(`/logs/module/${route.params.id}`)
       logs.value = res.data.map(normalizeLog)
     } catch (err) {
       console.error('Poll error:', err)
     }
-  }, 5000) // every 5 seconds
+  }, 5000)
 }
 
 const stopPolling = () => {
-  if (pollInterval) {
-    clearInterval(pollInterval)
-    pollInterval = null
-  }
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null }
 }
 
 /* ================= GET VALUE ================= */
@@ -559,7 +587,6 @@ const hasActiveFilters = computed(() => activeFilterCount.value > 0)
 const clearFilters = () => {
   searchQuery.value = ''
   initFilters()
-  // flush immediately — no delay on clear
   debouncedSearch.value  = ''
   debouncedFilters.value = {}
   debouncedDates.value   = {}
@@ -574,16 +601,15 @@ const parseDate = (val) => {
 
 const filteredLogs = computed(() => {
   const base = logs.value.filter(log => {
-    const matchesSearch = !debouncedSearch.value ||        // ← was searchQuery
-      Object.values(log.data || {})
-        .join(' ').toLowerCase().includes(debouncedSearch.value.toLowerCase())
+    const matchesSearch = !debouncedSearch.value ||
+      Object.values(log.data || {}).join(' ').toLowerCase().includes(debouncedSearch.value.toLowerCase())
 
-    const matchesFilters = Object.entries(debouncedFilters.value).every(([key, value]) => {  // ← was activeFilters
+    const matchesFilters = Object.entries(debouncedFilters.value).every(([key, value]) => {
       if (!value || value === 'all') return true
       return String(getValue(log, key)).toLowerCase().includes(String(value).toLowerCase())
     })
 
-    const matchesDates = Object.entries(debouncedDates.value).every(([key, range]) => {      // ← was dateFilters
+    const matchesDates = Object.entries(debouncedDates.value).every(([key, range]) => {
       const { from, to } = range
       if (!from && !to) return true
       const cellVal = getValue(log, key)
@@ -636,18 +662,10 @@ const visiblePages = computed(() => {
   const total = totalPages.value
   const cur   = currentPage.value
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
-  const pages = []
-  if (cur <= 4) {
-    pages.push(1, 2, 3, 4, 5, '...', total)
-  } else if (cur >= total - 3) {
-    pages.push(1, '...', total - 4, total - 3, total - 2, total - 1, total)
-  } else {
-    pages.push(1, '...', cur - 1, cur, cur + 1, '...', total)
-  }
-  return pages
+  if (cur <= 4)          return [1, 2, 3, 4, 5, '...', total]
+  if (cur >= total - 3)  return [1, '...', total - 4, total - 3, total - 2, total - 1, total]
+  return [1, '...', cur - 1, cur, cur + 1, '...', total]
 })
-
-
 
 /* ================= INPUT TYPE ================= */
 const inputType = (type) => {
@@ -714,16 +732,6 @@ const saveLog = async () => {
     await loadLogs()
     showToast(isEdit.value ? 'Log updated' : 'Log added', 'success')
 
-    if (isEdit.value && form.value['Status'] === 'Done') {
-      const ticketNo = form.value['Ticket Number']
-      if (ticketNo) {
-        window.open(
-          `http://172.16.1.39:5001/viewJobRequest?job_id=${ticketNo}`,
-          '_blank'
-        )
-      }
-    }
-
   } catch (err) {
     console.error(err)
     showToast('Failed to save log', 'error')
@@ -765,18 +773,11 @@ const closeModal = () => {
 const printLogs = () => {
   const dateRangeLabels = Object.entries(dateFilters.value)
     .filter(([, df]) => df.from || df.to)
-    .map(([key, df]) => {
-      const from = df.from || '—'
-      const to   = df.to   || '—'
-      return `${key}: ${from} → ${to}`
-    })
+    .map(([key, df]) => `${key}: ${df.from || '—'} → ${df.to || '—'}`)
     .join('  |  ')
 
   const moduleName = module.value?.name || 'Module'
-  const printDate  = new Date().toLocaleDateString('en-PH', {
-    year: 'numeric', month: 'long', day: 'numeric'
-  })
-
+  const printDate  = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
   const allFilteredData = filteredLogs.value
   const colHeaders = columns.value.map(c => `<th>${c.name}</th>`).join('')
   const rows = allFilteredData.map(log =>
@@ -792,9 +793,7 @@ const printLogs = () => {
 
   const win = window.open('', '_blank', 'width=900,height=700')
   win.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
+    <!DOCTYPE html><html><head>
       <title>${moduleName} — Logs</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -802,7 +801,6 @@ const printLogs = () => {
         .print-header { margin-bottom: 18px; border-bottom: 2px solid #111827; padding-bottom: 12px; }
         .print-header h1 { font-size: 20px; font-weight: 700; }
         .print-meta { display: flex; gap: 24px; margin-top: 6px; font-size: 12px; color: #555; flex-wrap: wrap; }
-        .print-meta span { display: flex; align-items: center; gap: 4px; }
         table { width: 100%; border-collapse: collapse; font-size: 12px; }
         thead { background: #111827; color: white; }
         th { padding: 9px 12px; text-align: left; font-weight: 600; letter-spacing: 0.03em; }
@@ -811,8 +809,7 @@ const printLogs = () => {
         .footer { margin-top: 16px; font-size: 11px; color: #9ca3af; text-align: right; }
         @media print { body { padding: 0; } @page { margin: 15mm; } }
       </style>
-    </head>
-    <body>
+    </head><body>
       <div class="print-header">
         <h1>${moduleName}</h1>
         <div class="print-meta">
@@ -823,14 +820,10 @@ const printLogs = () => {
           ${sortInfo}
         </div>
       </div>
-      <table>
-        <thead><tr>${colHeaders}</tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+      <table><thead><tr>${colHeaders}</tr></thead><tbody>${rows}</tbody></table>
       <div class="footer">Generated from ${moduleName} Log System</div>
       <script>window.onload = () => { window.print(); }<\/script>
-    </body>
-    </html>
+    </body></html>
   `)
   win.document.close()
 }
@@ -841,9 +834,7 @@ onMounted(async () => {
   startPolling()
 })
 
-onUnmounted(() => {
-  stopPolling()
-})
+onUnmounted(() => { stopPolling() })
 
 watch(() => route.params.id, async (newId, oldId) => {
   if (newId && newId !== oldId) {
@@ -855,32 +846,10 @@ watch(() => route.params.id, async (newId, oldId) => {
 </script>
 
 <style scoped>
-/* ===== PAGE ===== */
-.page {
-  padding: 24px;
-  background: #f6f8fb;
-  min-height: 100vh;
-  font-family: Inter, Arial, sans-serif;
-  color: #111827;
-  box-sizing: border-box;
-}
+.page { padding: 24px; background: #f6f8fb; min-height: 100vh; font-family: Inter, Arial, sans-serif; color: #111827; box-sizing: border-box; }
 
 /* ===== TOAST ===== */
-.toast {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-radius: 10px;
-  color: white;
-  font-size: 13px;
-  font-weight: 500;
-  z-index: 9999;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-}
+.toast { position: fixed; top: 20px; right: 20px; display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 10px; color: white; font-size: 13px; font-weight: 500; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
 .toast.success { background: #22c55e; }
 .toast.error   { background: #ef4444; }
 .toast-icon { font-size: 14px; }
@@ -888,825 +857,290 @@ watch(() => route.params.id, async (newId, oldId) => {
 .toast-slide-enter-from, .toast-slide-leave-to { opacity: 0; transform: translateY(-8px); }
 
 /* ===== TOPBAR ===== */
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
+.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .topbar h1 { font-size: 20px; font-weight: 600; margin: 0; }
 .topbar p  { font-size: 13px; color: #6b7280; margin: 2px 0 0; }
 .topbar-actions { display: flex; gap: 8px; align-items: center; }
 
 /* ===== BUTTONS ===== */
-.btn-primary {
-  background: #111827;
-  color: white;
-  border: none;
-  padding: 9px 16px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: background 0.15s;
-}
+.btn-primary { background: #111827; color: white; border: none; padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s; }
 .btn-primary:hover    { background: #1f2937; }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.btn-outline {
-  background: white;
-  color: #374151;
-  border: 1px solid #e5e7eb;
-  padding: 9px 16px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.15s;
-}
+.btn-outline { background: white; color: #374151; border: 1px solid #e5e7eb; padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; }
 .btn-outline:hover { background: #f9fafb; border-color: #d1d5db; }
-
-/* ===== FILTER TOGGLE BUTTON ===== */
-.btn-filter {
-  background: white;
-  color: #374151;
-  border: 1px solid #e5e7eb;
-  padding: 9px 16px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.15s;
-  position: relative;
-}
+.btn-filter { background: white; color: #374151; border: 1px solid #e5e7eb; padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; }
 .btn-filter:hover { background: #f9fafb; border-color: #d1d5db; }
-.btn-filter.active {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #1d4ed8;
-}
-
-.filter-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border-radius: 99px;
-  background: #1d4ed8;
-  color: white;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-
-/* ===== FILTER PANEL (collapsible) ===== */
-.filter-bar-panel {
-  background: white;
-  border: 1px solid #eef2f7;
-  border-radius: 14px;
-  padding: 14px 16px 12px;
-  margin-bottom: 16px;
-}
-
-/* slide transition */
-.filter-slide-enter-active,
-.filter-slide-leave-active {
-  transition: all 0.2s ease;
-  overflow: hidden;
-}
-.filter-slide-enter-from,
-.filter-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
-}
-
-.filter-bar {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.filter-bar > * {
-  flex: 1 1 140px;
-}
-
-.filter-footer {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid #f1f5f9;
-}
-
-/* ===== FLOATING LABEL WRAPPER ===== */
-.fl-wrap {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-}
-
-.fl-input {
-  height: 44px;
-  padding: 16px 10px 4px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #111827;
-  background: white;
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  width: 100%;
-  box-sizing: border-box;
-  appearance: auto;
-}
-.fl-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
-}
-
-.fl-label {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 13px;
-  color: #9ca3af;
-  pointer-events: none;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  background: transparent;
-}
-
-.fl-wrap .fl-input:focus ~ .fl-label {
-  top: 6px;
-  transform: translateY(0);
-  font-size: 10px;
-  font-weight: 500;
-  color: #3b82f6;
-  letter-spacing: 0.03em;
-}
-
-.fl-wrap .fl-input:not(:placeholder-shown) ~ .fl-label {
-  top: 6px;
-  transform: translateY(0);
-  font-size: 10px;
-  font-weight: 500;
-  color: #6b7280;
-  letter-spacing: 0.03em;
-}
-
-.fl-wrap input[type="date"]:valid ~ .fl-label,
-.fl-wrap input[type="time"]:valid ~ .fl-label {
-  top: 6px;
-  transform: translateY(0);
-  font-size: 10px;
-  font-weight: 500;
-  color: #6b7280;
-  letter-spacing: 0.03em;
-}
-
-.fl-label-select {
-  top: 6px;
-  transform: translateY(0);
-  font-size: 10px;
-  font-weight: 500;
-  color: #6b7280;
-  letter-spacing: 0.03em;
-}
-
-.fl-search { min-width: 0; flex: 2 1 200px; }
-.search-icon {
-  position: absolute;
-  left: 10px;
-  bottom: 11px;
-  color: #9ca3af;
-  font-size: 16px;
-  pointer-events: none;
-  transition: color 0.15s;
-  z-index: 1;
-}
-.fl-search:focus-within .search-icon { color: #3b82f6; }
-.search-input {
-  height: 44px;
-  padding: 16px 10px 4px 30px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #111827;
-  background: white;
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  width: 100%;
-  box-sizing: border-box;
-}
-.search-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
-}
-.search-label { left: 30px; }
-.fl-search .search-input:focus ~ .search-label,
-.fl-search .search-input:not(:placeholder-shown) ~ .search-label {
-  top: 6px;
-  transform: translateY(0);
-  font-size: 10px;
-  font-weight: 500;
-  color: #3b82f6;
-  letter-spacing: 0.03em;
-}
-
-.fl-select { min-width: 0; }
-.fl-text   { min-width: 0; }
-
-/* ===== DATE PICKER DROPDOWN ===== */
-.date-picker-wrap {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.fl-label-static {
-  font-size: 10px;
-  font-weight: 500;
-  color: #6b7280;
-  letter-spacing: 0.03em;
-  padding-left: 2px;
-}
-
-.date-trigger {
-  height: 44px;
-  padding: 0 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: white;
-  color: #111827;
-  font-size: 13px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  text-align: left;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.date-trigger:hover { border-color: #d1d5db; background: #f9fafb; }
-.date-trigger.active { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); color: #1d4ed8; }
-
-.date-trigger-icon { font-size: 14px; flex-shrink: 0; }
-.date-trigger-label { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.date-trigger-caret { font-size: 11px; color: #9ca3af; flex-shrink: 0; }
-.date-trigger-clear {
-  font-size: 11px;
-  color: #9ca3af;
-  flex-shrink: 0;
-  line-height: 1;
-  transition: color 0.15s;
-}
-.date-trigger-clear:hover { color: #ef4444; }
-
-/* clear button inside text/search/select filters */
-.fl-clear-btn {
-  position: absolute;
-  right: 8px;
-  bottom: 10px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 11px;
-  color: #9ca3af;
-  line-height: 1;
-  padding: 2px;
-  display: flex;
-  align-items: center;
-  transition: color 0.15s;
-  z-index: 2;
-}
-.fl-clear-btn:hover { color: #ef4444; }
-
-/* nudge inputs left so text doesn't hide under the ✕ */
-.fl-wrap:has(.fl-clear-btn) .fl-input,
-.fl-wrap:has(.fl-clear-btn) .search-input {
-  padding-right: 26px;
-}
-
-/* hide native select arrow; our custom icon replaces it */
-.fl-input-select {
-  appearance: none;
-  padding-right: 28px;
-}
-
-.select-icon-btn,
-.select-caret {
-  position: absolute;
-  right: 8px;
-  bottom: 10px;
-  pointer-events: none;
-  font-size: 11px;
-  color: #9ca3af;
-  line-height: 1;
-}
-
-.select-icon-btn {
-  pointer-events: all;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 2px;
-  display: flex;
-  align-items: center;
-  transition: color 0.15s;
-  z-index: 2;
-}
-.select-icon-btn:hover { color: #ef4444; }
-
-.date-dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 100;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 12px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
-  min-width: 260px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.date-dropdown-row {
-  display: flex;
-  gap: 8px;
-}
-
-.date-dropdown-field {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.date-dropdown-label {
-  font-size: 10px;
-  font-weight: 500;
-  color: #6b7280;
-  letter-spacing: 0.03em;
-}
-
-.date-dropdown-input {
-  height: 36px;
-  padding: 0 8px;
-  border: 1px solid #e5e7eb;
-  border-radius: 7px;
-  font-size: 12px;
-  color: #111827;
-  background: white;
-  outline: none;
-  width: 100%;
-  box-sizing: border-box;
-  transition: border-color 0.15s;
-}
-.date-dropdown-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
-
-.date-dropdown-footer {
-  display: flex;
-  gap: 6px;
-  padding-top: 8px;
-  border-top: 1px solid #f1f5f9;
-}
-
-.btn-shortcut {
-  flex: 1;
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  color: #374151;
-  padding: 5px 0;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.btn-shortcut:hover { background: #e5e7eb; }
-
-/* ===== BUTTONS (shared) ===== */
-.btn-ghost {
-  background: transparent;
-  border: 1px solid #e5e7eb;
-  color: #6b7280;
-  padding: 8px 14px;
-  border-radius: 10px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
+.btn-filter.active { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.filter-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 99px; background: #1d4ed8; color: white; font-size: 10px; font-weight: 700; }
+.btn-ghost { background: transparent; border: 1px solid #e5e7eb; color: #6b7280; padding: 8px 14px; border-radius: 10px; font-size: 13px; cursor: pointer; transition: all 0.15s; }
 .btn-ghost:hover { background: #f3f4f6; }
-
-.btn-ghost-sm {
-  background: transparent;
-  border: 1px solid #e5e7eb;
-  color: #6b7280;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 6px 12px;
-  border-radius: 8px;
-  transition: all 0.15s;
-}
+.btn-ghost-sm { background: transparent; border: 1px solid #e5e7eb; color: #6b7280; font-size: 12px; cursor: pointer; padding: 6px 12px; border-radius: 8px; transition: all 0.15s; }
 .btn-ghost-sm:hover { background: #f3f4f6; color: #374151; }
-
-.btn-danger {
-  background: #ef4444;
-  color: white;
-  border: none;
-  padding: 9px 16px;
-  border-radius: 10px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
+.btn-danger { background: #ef4444; color: white; border: none; padding: 9px 16px; border-radius: 10px; font-size: 13px; cursor: pointer; transition: background 0.15s; }
 .btn-danger:hover { background: #dc2626; }
-
-.btn-clear {
-  background: transparent;
-  border: 1px solid #fca5a5;
-  color: #ef4444;
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s;
-}
+.btn-clear { background: transparent; border: 1px solid #fca5a5; color: #ef4444; padding: 6px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
 .btn-clear:hover { background: #fee2e2; }
-
-
 .btn-icon-left { font-size: 16px; line-height: 1; }
 
-/* ===== PANEL ===== */
-.panel {
-  background: white;
-  border: 1px solid #eef2f7;
-  border-radius: 14px;
-  overflow: hidden;
-}
+/* ===== FILTER PANEL ===== */
+.filter-bar-panel { background: white; border: 1px solid #eef2f7; border-radius: 14px; padding: 14px 16px 12px; margin-bottom: 16px; }
+.filter-slide-enter-active, .filter-slide-leave-active { transition: all 0.2s ease; overflow: hidden; }
+.filter-slide-enter-from, .filter-slide-leave-to { opacity: 0; transform: translateY(-6px); }
+.filter-bar { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+.filter-bar > * { flex: 1 1 140px; }
+.filter-footer { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #f1f5f9; }
 
-/* ===== TABLE ===== */
+/* ===== FLOATING LABEL ===== */
+.fl-wrap { position: relative; display: flex; flex-direction: column; justify-content: flex-end; }
+.fl-input { height: 44px; padding: 16px 10px 4px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; color: #111827; background: white; outline: none; transition: border-color 0.15s, box-shadow 0.15s; width: 100%; box-sizing: border-box; appearance: auto; }
+.fl-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+.fl-label { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; color: #9ca3af; pointer-events: none; transition: all 0.2s ease; white-space: nowrap; }
+.fl-wrap .fl-input:focus ~ .fl-label,
+.fl-wrap .fl-input:not(:placeholder-shown) ~ .fl-label { top: 6px; transform: translateY(0); font-size: 10px; font-weight: 500; color: #3b82f6; letter-spacing: 0.03em; }
+.fl-label-select { top: 6px; transform: translateY(0); font-size: 10px; font-weight: 500; color: #6b7280; letter-spacing: 0.03em; }
+.fl-search { min-width: 0; flex: 2 1 200px; }
+.search-icon { position: absolute; left: 10px; bottom: 11px; color: #9ca3af; font-size: 16px; pointer-events: none; z-index: 1; }
+.fl-search:focus-within .search-icon { color: #3b82f6; }
+.search-input { height: 44px; padding: 16px 10px 4px 30px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; color: #111827; background: white; outline: none; transition: border-color 0.15s, box-shadow 0.15s; width: 100%; box-sizing: border-box; }
+.search-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+.search-label { left: 30px; }
+.fl-search .search-input:focus ~ .search-label,
+.fl-search .search-input:not(:placeholder-shown) ~ .search-label { top: 6px; transform: translateY(0); font-size: 10px; font-weight: 500; color: #3b82f6; letter-spacing: 0.03em; }
+.fl-clear-btn { position: absolute; right: 8px; bottom: 10px; background: none; border: none; cursor: pointer; font-size: 11px; color: #9ca3af; line-height: 1; padding: 2px; display: flex; align-items: center; transition: color 0.15s; z-index: 2; }
+.fl-clear-btn:hover { color: #ef4444; }
+.fl-input-select { appearance: none; padding-right: 28px; }
+.select-icon-btn, .select-caret { position: absolute; right: 8px; bottom: 10px; pointer-events: none; font-size: 11px; color: #9ca3af; line-height: 1; }
+.select-icon-btn { pointer-events: all; background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; transition: color 0.15s; z-index: 2; }
+.select-icon-btn:hover { color: #ef4444; }
+
+/* ===== DATE PICKER ===== */
+.date-picker-wrap { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fl-label-static { font-size: 10px; font-weight: 500; color: #6b7280; letter-spacing: 0.03em; padding-left: 2px; }
+.date-trigger { height: 44px; padding: 0 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: white; color: #111827; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; transition: border-color 0.15s, box-shadow 0.15s; }
+.date-trigger:hover { border-color: #d1d5db; background: #f9fafb; }
+.date-trigger.active { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); color: #1d4ed8; }
+.date-trigger-label { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.date-trigger-caret { font-size: 11px; color: #9ca3af; flex-shrink: 0; }
+.date-trigger-clear { font-size: 11px; color: #9ca3af; flex-shrink: 0; line-height: 1; transition: color 0.15s; }
+.date-trigger-clear:hover { color: #ef4444; }
+.date-dropdown { position: absolute; top: calc(100% + 4px); left: 0; z-index: 100; background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); min-width: 260px; display: flex; flex-direction: column; gap: 10px; }
+.date-dropdown-row { display: flex; gap: 8px; }
+.date-dropdown-field { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.date-dropdown-label { font-size: 10px; font-weight: 500; color: #6b7280; letter-spacing: 0.03em; }
+.date-dropdown-input { height: 36px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 7px; font-size: 12px; color: #111827; background: white; outline: none; width: 100%; box-sizing: border-box; transition: border-color 0.15s; }
+.date-dropdown-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+.date-dropdown-footer { display: flex; gap: 6px; padding-top: 8px; border-top: 1px solid #f1f5f9; }
+.btn-shortcut { flex: 1; background: #f3f4f6; border: 1px solid #e5e7eb; color: #374151; padding: 5px 0; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+.btn-shortcut:hover { background: #e5e7eb; }
+
+/* ===== PANEL / TABLE ===== */
+.panel { background: white; border: 1px solid #eef2f7; border-radius: 14px; overflow: hidden; }
 .table-wrapper { overflow-x: auto; }
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 500px;
-}
-
+.table { width: 100%; border-collapse: collapse; min-width: 500px; }
 .table thead { background: #111827; }
-
-.table th {
-  padding: 13px 16px;
-  text-align: left;
-  font-size: 12px;
-  font-weight: 600;
-  color: white;
-  letter-spacing: 0.04em;
-}
-
-.sortable-th {
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.15s;
-}
+.table th { padding: 13px 16px; text-align: left; font-size: 12px; font-weight: 600; color: white; letter-spacing: 0.04em; }
+.sortable-th { cursor: pointer; user-select: none; transition: background 0.15s; }
 .sortable-th:hover { background: #1f2937; }
-
-.th-inner {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.sort-icon {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 1px;
-  margin-left: 2px;
-  line-height: 1;
-}
-
-.sort-arrow {
-  font-size: 8px;
-  opacity: 0.25;
-  transition: opacity 0.15s;
-  line-height: 1;
-}
-.sort-arrow.active {
-  opacity: 1;
-  color: #60a5fa;
-}
-
+.th-inner { display: flex; align-items: center; gap: 6px; }
+.sort-icon { display: inline-flex; flex-direction: column; gap: 1px; margin-left: 2px; line-height: 1; }
+.sort-arrow { font-size: 8px; opacity: 0.25; transition: opacity 0.15s; line-height: 1; }
+.sort-arrow.active { opacity: 1; color: #60a5fa; }
 .th-actions { text-align: right; }
-
-.req-dot {
-  color: #f87171;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.table td {
-  padding: 12px 16px;
-  border-bottom: 1px solid #f1f5f9;
-  font-size: 13px;
-  color: #374151;
-}
+.req-dot { color: #f87171; font-size: 14px; line-height: 1; }
+.table td { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: #374151; }
 .table tbody tr:last-child td { border-bottom: none; }
 .table tbody tr:hover { background: #f8fafc; }
-
-.td-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 4px;
-  padding-right: 12px;
-}
-
+.td-actions { display: flex; justify-content: flex-end; gap: 4px; padding-right: 12px; }
 .cell-value { color: #111827; }
 .cell-empty { color: #d1d5db; }
 
-.btn-icon-action {
+/* ===== LINK CELL ===== */
+.cell-link { color: #2563eb; font-weight: 500; text-decoration: none; border-bottom: 1px dashed #93c5fd; transition: color 0.15s, border-color 0.15s; }
+.cell-link:hover { color: #1d4ed8; border-bottom-color: #1d4ed8; }
+
+/* ===== SELECT BADGE (dynamic color via inline style) ===== */
+.select-badge { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+
+/* ===== MATURE ACTION BUTTONS ===== */
+.action-btn {
   width: 30px;
   height: 30px;
   border-radius: 7px;
-  border: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #9ca3af;
   cursor: pointer;
-  font-size: 13px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   transition: all 0.15s;
-  background: transparent;
+  flex-shrink: 0;
 }
-.btn-icon-action.edit         { color: #0284c7; }
-.btn-icon-action.edit:hover   { background: #e0f2fe; }
-.btn-icon-action.danger       { color: #dc2626; }
-.btn-icon-action.danger:hover { background: #fee2e2; }
+.action-btn:hover        { background: #f3f4f6; color: #374151; border-color: #e5e7eb; }
+.action-btn.edit:hover   { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.action-btn.danger:hover { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
 
-/* ===== EMPTY STATE ===== */
+/* ===== EMPTY / PLACEHOLDER ===== */
 .empty-row td { text-align: center; padding: 40px 0; }
 .empty-state { color: #9ca3af; }
 .empty-icon { font-size: 28px; opacity: 0.3; margin-bottom: 8px; }
 .empty-state p { font-size: 13px; margin: 0; }
-
-/* ===== PLACEHOLDER ===== */
-.placeholder-panel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 200px;
-  border: 1px dashed #e5e7eb !important;
-  background: #fafafa !important;
-}
+.placeholder-panel { display: flex; align-items: center; justify-content: center; min-height: 200px; border: 1px dashed #e5e7eb !important; background: #fafafa !important; }
 .placeholder-content { text-align: center; color: #9ca3af; }
 .placeholder-icon { font-size: 28px; opacity: 0.3; margin-bottom: 8px; }
 .placeholder-content p { font-size: 13px; margin: 0; }
 
 /* ===== PAGINATION ===== */
-.pagination-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  border-top: 1px solid #f1f5f9;
-  background: #fafafa;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.pagination-info {
-  font-size: 12px;
-  color: #6b7280;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.sort-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1d4ed8;
-  border-radius: 99px;
-  padding: 2px 8px;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.btn-clear-sort {
-  background: none;
-  border: none;
-  color: #93c5fd;
-  cursor: pointer;
-  font-size: 10px;
-  padding: 0 2px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  transition: color 0.15s;
-}
+.pagination-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-top: 1px solid #f1f5f9; background: #fafafa; flex-wrap: wrap; gap: 8px; }
+.pagination-info { font-size: 12px; color: #6b7280; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sort-badge { display: inline-flex; align-items: center; gap: 4px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; border-radius: 99px; padding: 2px 8px; font-size: 11px; font-weight: 500; }
+.btn-clear-sort { background: none; border: none; color: #93c5fd; cursor: pointer; font-size: 10px; padding: 0 2px; line-height: 1; display: inline-flex; align-items: center; transition: color 0.15s; }
 .btn-clear-sort:hover { color: #1d4ed8; }
-
-.pagination-controls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.page-size-select {
-  height: 32px;
-  padding: 0 8px;
-  border: 1px solid #e5e7eb;
-  border-radius: 7px;
-  font-size: 12px;
-  color: #374151;
-  background: white;
-  outline: none;
-  cursor: pointer;
-  margin-right: 6px;
-}
-
-.page-btn {
-  min-width: 32px;
-  height: 32px;
-  padding: 0 6px;
-  border: 1px solid #e5e7eb;
-  border-radius: 7px;
-  background: white;
-  color: #374151;
-  font-size: 13px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-}
+.pagination-controls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.page-size-select { height: 32px; padding: 0 8px; border: 1px solid #e5e7eb; border-radius: 7px; font-size: 12px; color: #374151; background: white; outline: none; cursor: pointer; margin-right: 6px; }
+.page-btn { min-width: 32px; height: 32px; padding: 0 6px; border: 1px solid #e5e7eb; border-radius: 7px; background: white; color: #374151; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all 0.15s; }
 .page-btn:hover:not(:disabled) { background: #f3f4f6; border-color: #d1d5db; }
 .page-btn.active { background: #111827; color: white; border-color: #111827; font-weight: 600; }
 .page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-
-.page-ellipsis {
-  font-size: 13px;
-  color: #9ca3af;
-  padding: 0 4px;
-  line-height: 32px;
-}
+.page-ellipsis { font-size: 13px; color: #9ca3af; padding: 0 4px; line-height: 32px; }
 
 /* ===== MODAL ===== */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.4);
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  overflow-y: auto;
-  padding: 40px 16px;
-  z-index: 9999;
-}
-
-.modal {
-  background: white;
-  border-radius: 16px;
-  width: 480px;
-  max-width: 100%;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 18px 20px;
-  border-bottom: 1px solid #eef2f7;
-}
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; justify-content: center; align-items: flex-start; overflow-y: auto; padding: 40px 16px; z-index: 9999; }
+.modal { background: white; border-radius: 16px; width: 480px; max-width: 100%; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+.modal-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 18px 20px; border-bottom: 1px solid #eef2f7; }
 .modal-header h3 { margin: 0; font-size: 15px; font-weight: 600; color: #111827; }
 .modal-header p  { margin: 4px 0 0; font-size: 12px; color: #9ca3af; }
-
 .danger-header h3 { color: #dc2626; }
-
-.modal-body {
-  padding: 18px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  max-height: 55vh;
-  overflow-y: auto;
-}
-
+.modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; max-height: 55vh; overflow-y: auto; }
 .delete-msg { font-size: 13px; color: #374151; margin: 0; }
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 14px 20px;
-  border-top: 1px solid #eef2f7;
-  background: #fafafa;
-}
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid #eef2f7; background: #fafafa; }
 
 /* ===== FORM ===== */
 .form-group { display: flex; flex-direction: column; gap: 5px; }
-.form-label {
-  font-size: 12px;
-  color: #6b7280;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
+.form-label { font-size: 12px; color: #6b7280; font-weight: 500; display: flex; align-items: center; gap: 2px; }
 .required-star { color: #ef4444; font-size: 13px; }
-
-.form-input {
-  width: 100%;
-  padding: 9px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  font-size: 13px;
-  color: #111827;
-  background: white;
-  outline: none;
-  box-sizing: border-box;
-  transition: border-color 0.15s;
-}
+.form-input { width: 100%; padding: 9px 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; color: #111827; background: white; outline: none; box-sizing: border-box; transition: border-color 0.15s; }
 .form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
 .form-input.input-error { border-color: #ef4444; background: #fff5f5; }
 .form-input.input-error:focus { box-shadow: 0 0 0 3px rgba(239,68,68,0.1); }
+.error-msg { font-size: 11px; color: #ef4444; font-weight: 500; }
 
-.error-msg {
-  font-size: 11px;
-  color: #ef4444;
-  font-weight: 500;
-}
-
-.ticket-link {
-  color: #2563eb;
-  font-weight: 500;
-  text-decoration: none;
-  border-bottom: 1px dashed #93c5fd;
-  transition: color 0.15s, border-color 0.15s;
-}
-.ticket-link:hover {
-  color: #1d4ed8;
-  border-bottom-color: #1d4ed8;
-}
-
-/* ===== STATUS BADGES ===== */
-.status-badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 99px;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.status-ongoing      { background: #dbeafe; color: #1d4ed8; }
-.status-pending      { background: #fef9c3; color: #a16207; }
-.status-done         { background: #dcfce7; color: #15803d; }
-.status-for-tommorow { background: #f3e8ff; color: #7e22ce; }
 /* ===== PRINT ===== */
-@media print {
-  .no-print { display: none !important; }
-}
+@media print { .no-print { display: none !important; } }
 
 /* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
-  .page { padding: 16px; }
-  .topbar { flex-direction: column; align-items: flex-start; gap: 10px; }
-  .topbar-actions { width: 100%; justify-content: flex-end; }
-  .filter-bar { flex-direction: column; align-items: stretch; }
-  .fl-wrap, .fl-search, .fl-date, .fl-select, .fl-text { width: 100%; min-width: unset; }
-  .search-input { min-width: unset; }
-  .date-range-inputs { flex-wrap: wrap; }
-  .fl-date { flex: 1; min-width: unset !important; }
-  .pagination-bar { flex-direction: column; align-items: flex-start; }
-  .pagination-controls { flex-wrap: wrap; }
+  /* Page padding — leave top room for hamburger button */
+  .page {
+    padding: 56px 12px 12px;
+  }
+
+  /* Topbar stacks vertically */
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .topbar h1 { font-size: 16px; }
+  .topbar p  { font-size: 12px; }
+  .topbar-actions {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Shrink action buttons on mobile */
+  .btn-primary,
+  .btn-outline,
+  .btn-filter {
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+
+  /* Filter bar stacks */
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .filter-bar > * {
+    flex: unset;
+    width: 100%;
+  }
+
+  /* Table scrolls horizontally */
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .table {
+    min-width: 480px;
+  }
+  .table th,
+  .table td {
+    padding: 10px 10px;
+    font-size: 12px;
+  }
+
+  /* Pagination stacks */
+  .pagination-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+  .pagination-controls {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .page-size-select {
+    width: 100%;
+    margin-right: 0;
+    margin-bottom: 6px;
+  }
+  .page-btn {
+    min-width: 30px;
+    height: 30px;
+    font-size: 12px;
+  }
+
+  /* Modal takes full screen on mobile */
+  .modal-backdrop {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-body {
+    max-height: unset;
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  /* Date dropdown full width on mobile */
+  .date-dropdown {
+    left: 0;
+    right: 0;
+    min-width: unset;
+    width: 100%;
+  }
+
+  /* Filter footer */
+  .filter-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .filter-footer button {
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>

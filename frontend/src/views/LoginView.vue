@@ -127,7 +127,8 @@ const focusedField = ref('')
 onMounted(() => {
   const token = localStorage.getItem('token')
   const route = router.currentRoute.value.name
-  if (token && route === 'login') {
+
+  if (token && token !== 'null' && token !== '' && route === 'login') {
     router.replace('/profiles')
   }
 })
@@ -183,7 +184,7 @@ const forgotPassword = async () => {
 }
 
 const loginWithGoogle = () => {
-  window.location.href = 'http://localhost:3000/auth/google'
+  window.location.href = 'http://172.16.2.31:3111/auth/google'
 }
 </script>
 

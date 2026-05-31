@@ -19,8 +19,8 @@ export class Module {
   @Column()
   userId!: number
 
-  @Column('json', { nullable: true })
-  allowedProfiles!: any[]
+  @Column({ type: 'longtext', nullable: true, default: '[]' })
+  allowedProfilesRaw!: string
 
   @OneToMany(() => ModuleColumn, col => col.module, {
     cascade: true,

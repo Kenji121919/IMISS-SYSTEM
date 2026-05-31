@@ -15,6 +15,12 @@ export class User {
   @Column()
   password!: string
 
+  @Column({ nullable: true })
+  mobile!: string;
+
+  @Column({ nullable: true })          // ← ADD THIS
+  organizationName!: string;
+
   @Column({ default: 'USER' })
   role!: string
 

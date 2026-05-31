@@ -18,6 +18,12 @@
         </div>
       </div>
 
+      <!-- ORGANIZATION NAME DISPLAY -->
+      <div v-if="organizationName" class="org-badge">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        {{ organizationName }}
+      </div>
+
       <div class="divider-line"></div>
 
       <!-- ERROR -->
@@ -38,6 +44,28 @@
 
       <!-- FORM -->
       <form class="form" @submit.prevent="register" novalidate>
+
+        <!-- ORGANIZATION NAME -->
+        <div class="field" :class="{ focused: focusedField === 'organizationName', filled: organizationName, error: fieldErrors.organizationName }">
+          <label for="organizationName" class="field-label">Organization Name</label>
+          <div class="field-inner">
+            <svg class="field-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <input
+              id="organizationName"
+              v-model="organizationName"
+              type="text"
+              :disabled="loading"
+              autocomplete="organization"
+              @focus="focusedField = 'organizationName'"
+              @blur="onBlur('organizationName')"
+              @input="fieldErrors.organizationName = ''"
+            />
+            <transition name="check-pop">
+              <svg v-if="organizationName && !fieldErrors.organizationName" class="field-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            </transition>
+          </div>
+          <p v-if="fieldErrors.organizationName" class="field-error">{{ fieldErrors.organizationName }}</p>
+        </div>
 
         <!-- ROW: Username + Email side-by-side on wider screens -->
         <div class="field-row">
@@ -86,6 +114,29 @@
             <p v-if="fieldErrors.email" class="field-error">{{ fieldErrors.email }}</p>
           </div>
 
+        </div>
+
+        <!-- MOBILE NUMBER -->
+        <div class="field" :class="{ focused: focusedField === 'mobile', filled: mobile, error: fieldErrors.mobile }">
+          <label for="mobile" class="field-label">Mobile Number <span class="field-label-badge">For verification</span></label>
+          <div class="field-inner">
+            <svg class="field-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+            <input
+              id="mobile"
+              v-model="mobile"
+              type="tel"
+              :disabled="loading"
+              autocomplete="tel"
+              placeholder="+63 900 000 0000"
+              @focus="focusedField = 'mobile'"
+              @blur="onBlur('mobile')"
+              @input="fieldErrors.mobile = ''"
+            />
+            <transition name="check-pop">
+              <svg v-if="isValidMobile && !fieldErrors.mobile" class="field-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            </transition>
+          </div>
+          <p v-if="fieldErrors.mobile" class="field-error">{{ fieldErrors.mobile }}</p>
         </div>
 
         <!-- PASSWORD -->
@@ -174,8 +225,10 @@ import api from '@/api/axios'
 
 const router = useRouter()
 
+const organizationName = ref('')
 const username = ref('')
 const email = ref('')
+const mobile = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 
@@ -186,14 +239,21 @@ const successMessage = ref('')
 const focusedField = ref('')
 
 const fieldErrors = reactive({
+  organizationName: '',
   username: '',
   email: '',
+  mobile: '',
   confirm: '',
 })
 
 /* ─── EMAIL VALIDATION ─── */
 const isValidEmail = computed(() =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)
+)
+
+/* ─── MOBILE VALIDATION ─── */
+const isValidMobile = computed(() =>
+  /^[+]?[\d\s\-().]{7,15}$/.test(mobile.value.trim())
 )
 
 /* ─── PASSWORD STRENGTH ─── */
@@ -219,8 +279,14 @@ const passwordStrength = computed(() => {
 /* ─── BLUR VALIDATION ─── */
 const onBlur = (field) => {
   focusedField.value = ''
+  if (field === 'organizationName' && organizationName.value && organizationName.value.length < 2) {
+    fieldErrors.organizationName = 'At least 2 characters required'
+  }
   if (field === 'email' && email.value && !isValidEmail.value) {
     fieldErrors.email = 'Enter a valid email address'
+  }
+  if (field === 'mobile' && mobile.value && !isValidMobile.value) {
+    fieldErrors.mobile = 'Enter a valid mobile number'
   }
   if (field === 'confirm' && confirmPassword.value && password.value !== confirmPassword.value) {
     fieldErrors.confirm = 'Passwords do not match'
@@ -237,12 +303,20 @@ const register = async () => {
 
   // Full validation pass
   let hasError = false
+  if (!organizationName.value || organizationName.value.length < 2) {
+    fieldErrors.organizationName = 'At least 2 characters required'
+    hasError = true
+  }
   if (!username.value || username.value.length < 3) {
     fieldErrors.username = 'At least 3 characters required'
     hasError = true
   }
   if (!email.value || !isValidEmail.value) {
     fieldErrors.email = 'Enter a valid email address'
+    hasError = true
+  }
+  if (!mobile.value || !isValidMobile.value) {
+    fieldErrors.mobile = 'Enter a valid mobile number'
     hasError = true
   }
   if (!password.value) {
@@ -259,8 +333,10 @@ const register = async () => {
 
   try {
     await api.post('/auth/register', {
+      organizationName: organizationName.value,
       username: username.value,
       email: email.value,
+      mobile: mobile.value,
       password: password.value,
     })
 
@@ -329,7 +405,7 @@ const register = async () => {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 24px;
+  margin-bottom: 12px;
 }
 
 .logo-mark {
@@ -363,6 +439,25 @@ const register = async () => {
   font-size: 12px;
   color: #6b7280;
   letter-spacing: 0.02em;
+}
+
+/* ─── ORG BADGE ─── */
+.org-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(99,102,241,0.1);
+  border: 1px solid rgba(99,102,241,0.25);
+  color: #a5b4fc;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 99px;
+  margin-bottom: 16px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .divider-line {
@@ -426,6 +521,21 @@ const register = async () => {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-label-badge {
+  font-size: 10px;
+  font-weight: 500;
+  background: rgba(99,102,241,0.15);
+  color: #818cf8;
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 99px;
+  padding: 1px 7px;
+  letter-spacing: 0.03em;
+  text-transform: none;
 }
 
 .field.focused .field-label {
@@ -473,7 +583,8 @@ const register = async () => {
 }
 
 .field-inner input::placeholder {
-  color: transparent;
+  color: #3d3d42;
+  font-size: 13px;
 }
 
 .field-inner input:focus {

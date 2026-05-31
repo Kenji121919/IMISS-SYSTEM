@@ -23,17 +23,25 @@ export class AuthController {
   }
 
   /* ================= REGISTER ================= */
-  @Post('register')
-  register(
-    @Body()
-    body: { username: string; email: string; password: string },
-  ) {
-    return this.authService.register(
-      body.username,
-      body.email,
-      body.password,
-    )
-  }
+@Post('register')
+register(
+  @Body()
+  body: {
+    username: string
+    email: string
+    password: string
+    mobile: string
+    organizationName: string
+  },
+) {
+  return this.authService.register(
+    body.username,
+    body.email,
+    body.password,
+    body.mobile,
+    body.organizationName,
+  )
+}
 
   /* ================= FORGOT PASSWORD ================= */
   @Post('forgot-password')

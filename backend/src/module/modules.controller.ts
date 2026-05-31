@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  Put,
-  Delete
-} from '@nestjs/common'
+import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common'
 import { ModulesService } from './modules.service'
 
 @Controller('modules')
@@ -18,24 +10,23 @@ export class ModulesController {
     return this.service.create(body)
   }
 
-  // ⚠️ IMPORTANT ORDER
-  @Get('single/:id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(Number(id))
-  }
-
-  @Get(':userId')
-  findAll(@Param('userId') userId: string) {
+  @Get(':userId')                           // GET /modules/2
+  findAll(@Param('userId') userId: number) {
     return this.service.findAll(Number(userId))
   }
 
+  @Get('single/:id')                        // GET /modules/single/5
+  findOne(@Param('id') id: number) {
+    return this.service.findOne(Number(id))
+  }
+
   @Put(':id')
-  update(@Param('id') id: string, @Body() body: any) {
+  update(@Param('id') id: number, @Body() body: any) {
     return this.service.update(Number(id), body)
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  delete(@Param('id') id: number) {
     return this.service.delete(Number(id))
   }
 }

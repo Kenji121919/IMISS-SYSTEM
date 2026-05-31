@@ -1,7 +1,7 @@
 // src/audit/audit.service.ts
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { Repository, In } from 'typeorm'
 import { AuditLog } from '../entities/audit-log.entity'
 
 @Injectable()
@@ -62,8 +62,9 @@ export class AuditService {
       order: { createdAt: 'DESC' },
     })
   }
-  async findAll() {
+ async findAllByModules(moduleIds: number[]) {
   return this.auditRepo.find({
+    where: { moduleId: In(moduleIds) },  // import In from typeorm
     order: { createdAt: 'DESC' },
     take: 1000,
   })
