@@ -97,7 +97,7 @@ const router = createRouter({
    AUTH GUARD
 ========================= */
 
-const publicRoutes = ['login', 'register']
+const publicRoutes = ['login', 'register', 'auth-callback']
 const noProfileRequired = ['profiles', 'audit-trail']
 
 // Routes only admins can access
@@ -107,6 +107,10 @@ router.beforeEach((to) => {
   const token = localStorage.getItem('token')
   const switching = localStorage.getItem('switchingProfile')
   const isLoggedIn = !!token && token !== 'null'
+  
+   if (isLoggedIn && publicRoutes.includes(to.name)) {
+    return { name: 'profiles' }
+  }
 
   if (to.name === 'profiles') {
     localStorage.removeItem('switchingProfile')

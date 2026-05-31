@@ -7,6 +7,7 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { User } from '../entities/user.entity'
 import { Profile } from '../entities/profile.entity'
 import { GoogleStrategy } from './google.strategy' 
+import { MailModule } from '../mail/mail.module'
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Profile]), // ✅ FIX HERE
@@ -15,6 +16,7 @@ import { GoogleStrategy } from './google.strategy'
       secret: 'SECRET_KEY',
       signOptions: { expiresIn: '8h' },
     }),
+    MailModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, GoogleStrategy],

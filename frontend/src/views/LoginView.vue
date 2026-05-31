@@ -106,16 +106,153 @@
 
     </div>
 
+    <!-- ===== FORGOT PASSWORD MODAL ===== -->
+    <transition name="modal-fade">
+      <div v-if="showForgotModal" class="modal-backdrop" @click.self="closeForgotModal">
+        <div class="modal-box" :class="{ shake: modalShake }">
+
+          <!-- STEP 1: Choose method -->
+          <template v-if="forgotStep === 1">
+            <div class="modal-head">
+              <h3>Reset your password</h3>
+              <p>How would you like to receive your reset code?</p>
+              <button class="modal-close" @click="closeForgotModal">✕</button>
+            </div>
+            <div class="method-options">
+              <button class="method-btn" :disabled="forgotLoading" @click="selectMethod('email')">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <div>
+                  <strong>Email</strong>
+                  <span>Send a 6-digit code to your email</span>
+                </div>
+                <span v-if="forgotLoading && forgotMethod === 'email'" class="spinner-sm" style="margin-left:auto"></span>
+              </button>
+              <button class="method-btn" :disabled="forgotLoading" @click="selectMethod('sms')">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                <div>
+                  <strong>SMS</strong>
+                  <span>Send a 6-digit code to your mobile</span>
+                </div>
+                <span v-if="forgotLoading && forgotMethod === 'sms'" class="spinner-sm" style="margin-left:auto"></span>
+              </button>
+            </div>
+            <transition name="slide-down">
+              <p v-if="forgotError" class="modal-error">{{ forgotError }}</p>
+            </transition>
+          </template>
+
+          <!-- STEP 2: Enter OTP -->
+          <template v-else-if="forgotStep === 2">
+            <div class="modal-head">
+              <h3>Enter your code</h3>
+              <p>{{ sentMessage }}</p>
+              <button class="modal-close" @click="closeForgotModal">✕</button>
+            </div>
+            <div class="otp-inputs">
+              <input
+                v-for="(_, i) in otpDigits"
+                :key="i"
+                :ref="el => otpRefs[i] = el"
+                v-model="otpDigits[i]"
+                type="text"
+                inputmode="numeric"
+                maxlength="1"
+                class="otp-box"
+                @input="onOtpInput(i)"
+                @keydown.backspace="onOtpBackspace(i)"
+                @paste.prevent="onOtpPaste($event)"
+              />
+            </div>
+            <transition name="slide-down">
+              <p v-if="forgotError" class="modal-error">{{ forgotError }}</p>
+            </transition>
+            <div class="modal-actions">
+              <button class="btn-ghost" @click="forgotStep = 1">Back</button>
+              <button class="btn-primary" :disabled="otpFull || forgotLoading" @click="verifyOtp">
+                <span v-if="forgotLoading" class="spinner-sm"></span>
+                {{ forgotLoading ? 'Verifying…' : 'Verify Code' }}
+              </button>
+            </div>
+            <p class="resend-text">
+              Didn't receive it?
+              <button class="link-btn" @click="resendOtp" :disabled="resendCooldown > 0">
+                {{ resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend' }}
+              </button>
+            </p>
+          </template>
+
+          <!-- STEP 3: New password -->
+          <template v-else-if="forgotStep === 3">
+            <div class="modal-head">
+              <h3>Set new password</h3>
+              <p>Choose a strong password for your account.</p>
+              <button class="modal-close" @click="closeForgotModal">✕</button>
+            </div>
+            <div class="modal-field">
+              <label>New Password</label>
+              <div class="modal-input-wrap">
+                <input
+                  v-model="newPassword"
+                  :type="showNewPass ? 'text' : 'password'"
+                  placeholder="At least 8 characters"
+                />
+                <button type="button" class="eye-toggle" @click="showNewPass = !showNewPass">
+                  <svg v-if="showNewPass" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="modal-field">
+              <label>Confirm Password</label>
+              <div class="modal-input-wrap">
+                <input
+                  v-model="confirmNewPassword"
+                  :type="showNewPass ? 'text' : 'password'"
+                  placeholder="Repeat your password"
+                />
+              </div>
+            </div>
+            <transition name="slide-down">
+              <p v-if="forgotError" class="modal-error">{{ forgotError }}</p>
+            </transition>
+            <div class="modal-actions">
+              <button class="btn-ghost" @click="forgotStep = 2">Back</button>
+              <button class="btn-primary" :disabled="forgotLoading" @click="submitNewPassword">
+                <span v-if="forgotLoading" class="spinner-sm"></span>
+                {{ forgotLoading ? 'Saving…' : 'Save Password' }}
+              </button>
+            </div>
+          </template>
+
+          <!-- STEP 4: Success -->
+          <template v-else-if="forgotStep === 4">
+            <div class="modal-success">
+              <div class="success-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <h3>Password updated!</h3>
+              <p>You can now sign in with your new password.</p>
+              <button class="btn-primary" style="width:100%;margin-top:8px;justify-content:center" @click="closeForgotModal">
+                Back to Sign In
+              </button>
+            </div>
+          </template>
+
+        </div>
+      </div>
+    </transition>
+
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/api/axios'
 
 const router = useRouter()
 
+// ─── LOGIN STATE ───
 const identifier = ref('')
 const password = ref('')
 const loading = ref(false)
@@ -124,37 +261,61 @@ const errorMessage = ref('')
 const shakeError = ref(false)
 const focusedField = ref('')
 
-onMounted(() => {
-  const token = localStorage.getItem('token')
-  const route = router.currentRoute.value.name
+// ─── FORGOT MODAL STATE ───
+const showForgotModal = ref(false)
+const forgotStep = ref(1)
+const forgotMethod = ref('')
+const forgotError = ref('')
+const forgotLoading = ref(false)
+const sentMessage = ref('')
+const modalShake = ref(false)
 
-  if (token && token !== 'null' && token !== '' && route === 'login') {
-    router.replace('/profiles')
+// OTP
+const otpDigits = reactive(['', '', '', '', '', ''])
+const otpRefs = ref([])
+const otpFull = computed(() => otpDigits.some(d => d === ''))
+
+// New password
+const newPassword = ref('')
+const confirmNewPassword = ref('')
+const showNewPass = ref(false)
+
+// Resend cooldown
+const resendCooldown = ref(0)
+let cooldownTimer = null
+
+onMounted(() => {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('error') === 'cancelled') {
+    errorMessage.value = 'Google sign-in was cancelled'
+  }
+  const loggedOut = sessionStorage.getItem('loggedOut')
+  if (loggedOut) {
+    sessionStorage.removeItem('loggedOut')
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    localStorage.removeItem('activeProfile')
   }
 })
 
+// ─── LOGIN ───
 const login = async () => {
   errorMessage.value = ''
   shakeError.value = false
-
   if (!identifier.value || !password.value) {
     errorMessage.value = 'Please fill in all fields'
     triggerShake()
     return
   }
-
   loading.value = true
-
   try {
     const res = await api.post('/auth/login', {
       identifier: identifier.value,
       password: password.value,
     })
-
     localStorage.setItem('token', res.data.access_token)
     localStorage.setItem('user', JSON.stringify(res.data.user))
     router.replace('/profiles')
-
   } catch (err) {
     errorMessage.value = err.response?.data?.message || 'Invalid credentials'
     triggerShake()
@@ -167,19 +328,136 @@ const login = async () => {
 
 const triggerShake = () => {
   shakeError.value = true
-  setTimeout(() => (shakeError.value = false), 500)
+  setTimeout(() => shakeError.value = false, 500)
 }
 
-const forgotPassword = async () => {
+const triggerModalShake = () => {
+  modalShake.value = true
+  setTimeout(() => modalShake.value = false, 400)
+}
+
+// ─── FORGOT MODAL ───
+const forgotPassword = () => {
   if (!identifier.value) {
     errorMessage.value = 'Enter your email or username first'
     return
   }
+  forgotStep.value = 1
+  forgotError.value = ''
+  forgotMethod.value = ''
+  otpDigits.forEach((_, i) => otpDigits[i] = '')
+  newPassword.value = ''
+  confirmNewPassword.value = ''
+  showForgotModal.value = true
+}
+
+const closeForgotModal = () => {
+  showForgotModal.value = false
+  clearInterval(cooldownTimer)
+  resendCooldown.value = 0
+}
+
+const selectMethod = async (method) => {
+  forgotMethod.value = method
+  forgotError.value = ''
+  forgotLoading.value = true
   try {
-    await api.post('/auth/forgot-password', { identifier: identifier.value })
-    alert('If that account exists, a reset link has been sent.')
-  } catch {
-    errorMessage.value = 'Failed to process request'
+    const res = await api.post('/auth/forgot-password', {
+      identifier: identifier.value,
+      method,
+    })
+    sentMessage.value = res.data.message
+    forgotStep.value = 2
+    startResendCooldown()
+  } catch (err) {
+    forgotError.value = err.response?.data?.message || 'Failed to send code'
+    triggerModalShake()
+  } finally {
+    forgotLoading.value = false
+  }
+}
+
+const startResendCooldown = () => {
+  resendCooldown.value = 60
+  clearInterval(cooldownTimer)
+  cooldownTimer = setInterval(() => {
+    resendCooldown.value--
+    if (resendCooldown.value <= 0) clearInterval(cooldownTimer)
+  }, 1000)
+}
+
+const resendOtp = async () => {
+  otpDigits.forEach((_, i) => otpDigits[i] = '')
+  forgotError.value = ''
+  await selectMethod(forgotMethod.value)
+}
+
+// ─── OTP INPUT HANDLING ───
+const onOtpInput = (i) => {
+  otpDigits[i] = otpDigits[i].replace(/[^0-9]/g, '').slice(0, 1)
+  if (otpDigits[i] && i < 5) {
+    otpRefs.value[i + 1]?.focus()
+  }
+}
+
+const onOtpBackspace = (i) => {
+  if (!otpDigits[i] && i > 0) {
+    otpDigits[i - 1] = ''
+    otpRefs.value[i - 1]?.focus()
+  }
+}
+
+const onOtpPaste = (e) => {
+  const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+  text.split('').forEach((char, i) => { otpDigits[i] = char })
+  otpRefs.value[Math.min(text.length, 5)]?.focus()
+}
+
+// ─── VERIFY OTP ───
+const verifyOtp = async () => {
+  forgotError.value = ''
+  forgotLoading.value = true
+  try {
+    await api.post('/auth/verify-otp', {
+      identifier: identifier.value,
+      otp: otpDigits.join(''),
+    })
+    forgotStep.value = 3
+  } catch (err) {
+    forgotError.value = err.response?.data?.message || 'Invalid code'
+    otpDigits.forEach((_, i) => otpDigits[i] = '')
+    otpRefs.value[0]?.focus()
+    triggerModalShake()
+  } finally {
+    forgotLoading.value = false
+  }
+}
+
+// ─── SUBMIT NEW PASSWORD ───
+const submitNewPassword = async () => {
+  forgotError.value = ''
+  if (!newPassword.value || newPassword.value.length < 8) {
+    forgotError.value = 'Password must be at least 8 characters'
+    return
+  }
+  if (newPassword.value !== confirmNewPassword.value) {
+    forgotError.value = 'Passwords do not match'
+    triggerModalShake()
+    return
+  }
+  forgotLoading.value = true
+  try {
+    await api.post('/auth/reset-password', {
+      identifier: identifier.value,
+      otp: otpDigits.join(''),
+      password: newPassword.value,
+    })
+    forgotStep.value = 4
+  } catch (err) {
+    forgotError.value = err.response?.data?.message || 'Failed to reset password'
+    triggerModalShake()
+  } finally {
+    forgotLoading.value = false
   }
 }
 
@@ -189,21 +467,6 @@ const loginWithGoogle = () => {
 </script>
 
 <style scoped>
-/* ─── TOKENS ─── */
-:root {
-  --c-bg: #0d0d0f;
-  --c-surface: #141416;
-  --c-surface-2: #1c1c1f;
-  --c-border: rgba(255,255,255,0.08);
-  --c-border-focus: rgba(99,102,241,0.7);
-  --c-accent: #6366f1;
-  --c-accent-hover: #818cf8;
-  --c-text: #f0f0f4;
-  --c-muted: #6b7280;
-  --c-error: #f87171;
-  --c-error-bg: rgba(248,113,113,0.08);
-}
-
 /* ─── LAYOUT ─── */
 .login-wrapper {
   min-height: 100vh;
@@ -217,7 +480,6 @@ const loginWithGoogle = () => {
   overflow: hidden;
 }
 
-/* Subtle grid background */
 .bg-grid {
   position: absolute;
   inset: 0;
@@ -350,9 +612,7 @@ const loginWithGoogle = () => {
   transition: color 0.2s;
 }
 
-.field.focused .field-label {
-  color: #818cf8;
-}
+.field.focused .field-label { color: #818cf8; }
 
 .field-inner {
   position: relative;
@@ -368,9 +628,7 @@ const loginWithGoogle = () => {
   pointer-events: none;
 }
 
-.field.focused .field-icon {
-  color: #818cf8;
-}
+.field.focused .field-icon { color: #818cf8; }
 
 .field-inner input {
   width: 100%;
@@ -386,9 +644,7 @@ const loginWithGoogle = () => {
   transition: border-color 0.2s, background 0.2s;
 }
 
-.field-inner input::placeholder {
-  color: transparent;
-}
+.field-inner input::placeholder { color: transparent; }
 
 .field-inner input:focus {
   border-color: rgba(99,102,241,0.5);
@@ -413,9 +669,7 @@ const loginWithGoogle = () => {
   transition: color 0.2s;
 }
 
-.eye-toggle:hover {
-  color: #9ca3af;
-}
+.eye-toggle:hover { color: #9ca3af; }
 
 /* ─── FORM META ─── */
 .form-meta {
@@ -434,9 +688,8 @@ const loginWithGoogle = () => {
   transition: color 0.2s;
 }
 
-.link-btn:hover {
-  color: #818cf8;
-}
+.link-btn:hover { color: #818cf8; }
+.link-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ─── SUBMIT BUTTON ─── */
 .submit-btn {
@@ -458,19 +711,9 @@ const loginWithGoogle = () => {
   margin-top: 4px;
 }
 
-.submit-btn:hover:not(:disabled) {
-  opacity: 0.92;
-  transform: translateY(-1px);
-}
-
-.submit-btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.submit-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.submit-btn:hover:not(:disabled) { opacity: 0.92; transform: translateY(-1px); }
+.submit-btn:active:not(:disabled) { transform: translateY(0); }
+.submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .spinner {
   width: 15px;
@@ -521,10 +764,7 @@ const loginWithGoogle = () => {
   transition: background 0.2s, border-color 0.2s;
 }
 
-.google-btn:hover {
-  background: #242428;
-  border-color: rgba(255,255,255,0.13);
-}
+.google-btn:hover { background: #242428; border-color: rgba(255,255,255,0.13); }
 
 /* ─── REGISTER PROMPT ─── */
 .register-prompt {
@@ -541,19 +781,273 @@ const loginWithGoogle = () => {
   font-weight: 500;
 }
 
-.register-link:hover {
-  color: #a5b4fc;
+.register-link:hover { color: #a5b4fc; }
+
+/* ─── FORGOT MODAL ─── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(6px);
+  padding: 24px;
+}
+
+.modal-box {
+  background: #141416;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 20px;
+  padding: 28px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.modal-box.shake {
+  animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+.modal-head {
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.modal-head h3 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #f0f0f4;
+  padding-right: 28px;
+}
+
+.modal-head p {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.modal-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-family: inherit;
+  line-height: 1;
+}
+
+.modal-close:hover { color: #f0f0f4; background: rgba(255,255,255,0.06); }
+
+/* ─── METHOD SELECTION ─── */
+.method-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.method-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #1c1c1f;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  color: #f0f0f4;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.method-btn:hover:not(:disabled) { background: #242428; border-color: rgba(99,102,241,0.4); }
+.method-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.method-btn svg { color: #818cf8; flex-shrink: 0; }
+.method-btn strong { display: block; font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.method-btn span { font-size: 12px; color: #6b7280; }
+
+/* ─── OTP INPUTS ─── */
+.otp-inputs {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 8px 0 16px;
+}
+
+.otp-box {
+  width: 44px;
+  height: 52px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  background: #1c1c1f;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  color: #f0f0f4;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.otp-box:focus { border-color: rgba(99,102,241,0.6); background: #1e1e22; }
+
+/* ─── MODAL FIELDS ─── */
+.modal-field {
+  margin-bottom: 12px;
+}
+
+.modal-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.modal-input-wrap {
+  position: relative;
+}
+
+.modal-input-wrap input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 40px 11px 14px;
+  background: #1c1c1f;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  color: #f0f0f4;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.modal-input-wrap input::placeholder { color: #3d3d42; }
+.modal-input-wrap input:focus { border-color: rgba(99,102,241,0.5); background: #1e1e22; }
+
+.modal-input-wrap .eye-toggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* ─── MODAL ACTIONS ─── */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.modal-error {
+  font-size: 12.5px;
+  color: #f87171;
+  margin: 8px 0 0;
+}
+
+.resend-text {
+  text-align: center;
+  font-size: 12.5px;
+  color: #6b7280;
+  margin-top: 14px;
+  margin-bottom: 0;
+}
+
+/* ─── SUCCESS STATE ─── */
+.modal-success {
+  text-align: center;
+  padding: 8px 0;
+}
+
+.success-icon {
+  width: 56px;
+  height: 56px;
+  background: rgba(52,211,153,0.12);
+  border: 1px solid rgba(52,211,153,0.25);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  color: #34d399;
+}
+
+.modal-success h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f0f0f4;
+  margin: 0 0 6px;
+}
+
+.modal-success p {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0 0 20px;
+}
+
+/* ─── SHARED MODAL BUTTONS ─── */
+.btn-ghost {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #6b7280;
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.btn-ghost:hover { background: rgba(255,255,255,0.05); color: #f0f0f4; }
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  color: white;
+  border: none;
+  padding: 9px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.2s;
+}
+
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary:hover:not(:disabled) { opacity: 0.9; }
+
+.spinner-sm {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
 }
 
 /* ─── TRANSITIONS ─── */
 .slide-down-enter-active,
-.slide-down-leave-active {
-  transition: all 0.25s ease;
-}
-
+.slide-down-leave-active { transition: all 0.25s ease; }
 .slide-down-enter-from,
-.slide-down-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
+.slide-down-leave-to { opacity: 0; transform: translateY(-8px); }
+
+.modal-fade-enter-active,
+.modal-fade-leave-active { transition: all 0.25s ease; }
+.modal-fade-enter-from,
+.modal-fade-leave-to { opacity: 0; transform: scale(0.96); }
 </style>

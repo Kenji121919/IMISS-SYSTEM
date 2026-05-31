@@ -10,15 +10,17 @@ import { JwtService } from '@nestjs/jwt'
 import * as bcrypt from 'bcrypt'
 import { User } from '../entities/user.entity'
 import { Profile } from '../entities/profile.entity'
+import { MailService } from '../mail/mail.service'
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(User)
     private userRepo: Repository<User>,
-    @InjectRepository(Profile)              // ← add this
+    @InjectRepository(Profile)             
     private profileRepo: Repository<Profile>,
     private jwtService: JwtService,
+    private mailService: MailService,
   ) {}
 
   /* ─── helpers ─── */
@@ -40,7 +42,7 @@ export class AuthService {
     const user = await this.userRepo.findOne({
       where: [{ username: identifier }, { email: identifier }],
     })
-
+    console.log('User found:', user?.id, '| email:', user?.email, '| username:', user?.username)
     if (!user) throw new UnauthorizedException('Invalid credentials')
 
     const isMatch = await bcrypt.compare(password, user.password)
@@ -53,14 +55,13 @@ export class AuthService {
   }
 
   /* ─── REGISTER ─── */
- // auth.service.ts
 
 async register(
   username: string,
   email: string,
   password: string,
-  mobile: string,          // ← add these
-  organizationName: string // ← add these
+  mobile: string,          
+  organizationName: string
 ) {
   const exists = await this.userRepo.findOne({
     where: [{ username }, { email }],
@@ -72,8 +73,8 @@ async register(
     username,
     email,
     password: hashed,
-    mobile,              // ← pass through
-    organizationName,    // ← pass through
+    mobile,              
+    organizationName,   
   })
   await this.userRepo.save(user)
 
@@ -92,42 +93,106 @@ async register(
 }
 
   /* ─── FORGOT PASSWORD ─── */
-  async forgotPassword(identifier: string) {
-    const user = await this.userRepo.findOne({
-      where: [{ username: identifier }, { email: identifier }],
-    })
-    // Silently succeed to avoid leaking account existence
-    if (!user) return { message: 'If that account exists, a reset link has been sent.' }
+async forgotPassword(identifier: string, method: 'email' | 'sms') {
+  const user = await this.userRepo.findOne({
+    where: [{ username: identifier }, { email: identifier }],
+  })
+  if (!user) return { message: 'If that account exists, a code has been sent.' }
 
-    // TODO: generate a reset token and email it
-    return { message: 'If that account exists, a reset link has been sent.' }
+  // Generate 6-digit OTP
+  const otp = Math.floor(100000 + Math.random() * 900000).toString()
+  const expiry = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
+
+  user.resetToken = otp
+  user.resetTokenExpiry = expiry
+  await this.userRepo.save(user)
+
+  if (method === 'email') {
+    if (!user.email) throw new BadRequestException('No email on this account')
+    await this.mailService.sendOtp(user.email, otp)
+    // Mask email: j***@gmail.com
+    const [name, domain] = user.email.split('@')
+    const masked = name[0] + '***@' + domain
+    return { message: `Code sent to ${masked}` }
   }
 
-  /* ─── RESET PASSWORD ─── */
-  async resetPassword(token: string, newPassword: string) {
-    // TODO: validate token, look up user, update password
-    throw new BadRequestException('Reset not yet implemented')
+  if (method === 'sms') {
+    if (!user.mobile) throw new BadRequestException('No mobile number on this account')
+    // TODO: plug in Twilio here later if needed
+    // For now return a dev-only response
+    return { message: `SMS to ${user.mobile.slice(0, -4).replace(/\d/g, '*') + user.mobile.slice(-4)}`, dev_otp: otp }
   }
+}
 
+/* ─── VERIFY OTP ─── */
+async verifyOtp(identifier: string, otp: string) {
+  const user = await this.userRepo.findOne({
+    where: [{ username: identifier }, { email: identifier }],
+  })
+  if (!user) throw new BadRequestException('Account not found')
+  if (!user.resetToken || user.resetToken !== otp) {
+  throw new BadRequestException('Invalid or expired code')
+}
+if (!user.resetTokenExpiry || new Date() > user.resetTokenExpiry) {
+  throw new BadRequestException('Code has expired')
+}
+  return { message: 'OTP verified' }
+}
+
+/* ─── RESET PASSWORD ─── */
+async resetPassword(identifier: string, otp: string, newPassword: string) {
+  const user = await this.userRepo.findOne({
+    where: [{ username: identifier }, { email: identifier }],
+  })
+  if (!user) throw new BadRequestException('Account not found')
+  if (!user.resetToken || user.resetToken !== otp) {
+  throw new BadRequestException('Invalid or expired code')
+}
+if (!user.resetTokenExpiry || new Date() > user.resetTokenExpiry) {
+  throw new BadRequestException('Code has expired')
+}
+
+  user.password = await bcrypt.hash(newPassword, 10)
+  user.resetToken = null
+  user.resetTokenExpiry = null
+  await this.userRepo.save(user)
+
+  return { message: 'Password reset successfully' }
+}
   /* ─── GOOGLE LOGIN ─── */
   async googleLogin(googleUser: { email: string; name: string; picture: string }) {
-    if (!googleUser) throw new UnauthorizedException('No user from Google')
+  if (!googleUser) throw new UnauthorizedException('No user from Google')
 
-    let user = await this.userRepo.findOne({ where: { email: googleUser.email } })
+  let user = await this.userRepo.findOne({ where: { email: googleUser.email } })
 
-    if (!user) {
-      // Auto-create account for new Google users
-      user = this.userRepo.create({
-        email: googleUser.email,
-        username: googleUser.email.split('@')[0],
-        password: await bcrypt.hash(Math.random().toString(36), 10),
-      })
-      await this.userRepo.save(user)
-    }
+  if (!user) {
+    user = this.userRepo.create({
+      email: googleUser.email,
+      username: googleUser.email.split('@')[0],
+      password: await bcrypt.hash(Math.random().toString(36), 10),
+      organizationName: googleUser.name || googleUser.email.split('@')[0],
+    })
+    await this.userRepo.save(user)
 
-    return {
-      access_token: this.sign(user),
-      user: this.safeUser(user),
-    }
+    const adminProfile = this.profileRepo.create({
+      name: 'Admin',
+      team: 'admin',
+      pin: '0000',
+      user: { id: user.id },
+    })
+    await this.profileRepo.save(adminProfile)
   }
+
+  return {
+    access_token: this.sign(user),
+    user: this.safeUser(user),
+  }
+}
+
+  /* ─── GET ME ─── */
+async getMe(userId: number) {
+  const user = await this.userRepo.findOne({ where: { id: userId } })
+  if (!user) throw new UnauthorizedException('User not found')
+  return this.safeUser(user)
+}
 }

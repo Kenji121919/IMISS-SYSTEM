@@ -13,9 +13,11 @@ import { LogsModule } from './logs/logs.module'
 import { ModuleColumn } from './entities/module-column.entity'
 import { AuditLog } from './entities/audit-log.entity'
 import { AuditModule } from './audit/audit.module'
+import { ConfigModule } from '@nestjs/config'
 
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRoot({
       type: 'mysql',
       host: 'localhost',
