@@ -26,7 +26,7 @@ import { ConfigModule } from '@nestjs/config'
       password: '',
       database: 'imisslogs_db',
       entities: [User, Profile, ModuleEntity, Log,  ModuleColumn, AuditLog],
-      synchronize: true,
+      synchronize: false,
     }),
 
     AuthModule,

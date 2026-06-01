@@ -67,8 +67,9 @@ export class LogsService {
 ) {
   const existing = await this.logRepo.findOne({
     where: { id },
-    relations: ['module'], // ✅ load relation so we can read moduleId
+    relations: ['module'], 
   })
+
   const before = existing?.data ?? {}
 
   await this.logRepo.update(id, { data: dto.data })

@@ -12,16 +12,16 @@ export class AuditLog {
   action!: 'CREATE' | 'UPDATE' | 'DELETE'
 
   @Column({ nullable: true })
-  logId!: number   // the affected log row's id
+  logId!: number   
 
   @Column({ type: 'json', nullable: true })
-  before!: Record<string, any>   // snapshot before change (null on CREATE)
+  before!: Record<string, any>   
 
   @Column({ type: 'json', nullable: true })
-  after!: Record<string, any>    // snapshot after change (null on DELETE)
+  after!: Record<string, any>   
 
   @Column({ type: 'json', nullable: true })
-  diff!: Record<string, { from: any; to: any }>  // only changed fields
+  diff!: Record<string, { from: any; to: any }>  
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'userId' })
@@ -31,7 +31,7 @@ export class AuditLog {
   userId!: number
 
   @Column({ nullable: true })
-  profileName!: string   // snapshot of profile name at time of action
+  profileName!: string   
 
   @ManyToOne(() => Module, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'moduleId' })

@@ -175,7 +175,11 @@
               </td>
             </tr>
 
-            <tr v-for="log in pagedLogs" :key="log.id">
+            <tr
+              v-for="log in pagedLogs"
+              :key="log.id"
+              :class="{ 'row-new': isNewLog(log) }"
+            >
               <td v-for="col in columns" :key="col.name">
 
                 <!-- LINK column type -->
@@ -209,17 +213,17 @@
 
               </td>
               <td class="td-actions no-print">
-  <button class="action-btn edit" @click="openEdit(log)" title="Edit">
-    <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
-      <path d="M11 2l3 3-8 8H3v-3l8-8z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-    </svg>
-  </button>
-  <button class="action-btn danger" @click="askDelete(log)" title="Delete">
-    <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
-      <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  </button>
-</td>
+                <button class="action-btn edit" @click="openEdit(log)" title="Edit">
+                  <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+                    <path d="M11 2l3 3-8 8H3v-3l8-8z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <button class="action-btn danger" @click="askDelete(log)" title="Delete">
+                  <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+                    <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -373,6 +377,33 @@ const activeFilters = ref({})
 const dateFilters   = ref({})
 const saving        = ref(false)
 
+/* ================= SEEN TRACKING ================= */
+// Timestamp recorded when this module was last opened.
+// Used by the sidebar to determine how many logs are "new".
+const SEEN_KEY = (id) => `imiss_last_seen_${id}`
+
+/**
+ * Call this whenever the user is actively viewing this module.
+ * Records now as the last-seen timestamp so the sidebar badge clears.
+ */
+const markCurrentModuleSeen = () => {
+  const id = route.params.id
+  if (!id) return
+  localStorage.setItem(SEEN_KEY(id), new Date().toISOString())
+  // Let the sidebar know it can clear the badge for this module
+  window.dispatchEvent(new CustomEvent('imiss:module-seen', { detail: { moduleId: id } }))
+}
+
+/* ================= NEW-ROW HIGHLIGHT ================= */
+// Logs created after the previous visit get a subtle highlight.
+const prevSeenTimestamp = ref(null)
+
+const isNewLog = (log) => {
+  if (!prevSeenTimestamp.value) return false
+  const created = log.createdAt || log.created_at || log.timestamp
+  return created && new Date(created) > prevSeenTimestamp.value
+}
+
 /* ================= SORT ================= */
 const sortKey = ref('')
 const sortDir = ref('asc')
@@ -407,12 +438,6 @@ const safeParse = (val) => {
   try { return JSON.parse(val) } catch { return [] }
 }
 
-/**
- * Normalize options — stored as either:
- *   - old format: ["Yes", "No"]
- *   - new format: [{ label: "Yes", color: "#22c55e" }, ...]
- * Always returns array of { label, color }
- */
 const normalizeOptions = (options) => {
   if (!Array.isArray(options)) return []
   return options.map(o =>
@@ -422,9 +447,6 @@ const normalizeOptions = (options) => {
   )
 }
 
-/**
- * Returns inline style for a select badge based on its configured color.
- */
 const getOptionStyle = (col, value) => {
   const opts = normalizeOptions(col.options)
   const opt  = opts.find(o => o.label === value)
@@ -517,7 +539,6 @@ const loadModule = async () => {
   const parsedColumns = safeParse(res.data.columns)
   columns.value = parsedColumns.map(col => ({
     ...col,
-    // options stay as-is (array of strings or objects); normalizeOptions handles both
     options: typeof col.options === 'string' ? safeParse(col.options) : (col.options || []),
     baseUrl: col.baseUrl || ''
   }))
@@ -547,8 +568,16 @@ const loadLogs = async () => {
 }
 
 const loadAll = async () => {
+  // Snapshot the previous last-seen time BEFORE we mark as seen,
+  // so we can highlight new rows during this session.
+  const raw = localStorage.getItem(SEEN_KEY(route.params.id))
+  prevSeenTimestamp.value = raw ? new Date(raw) : null
+
   await loadModule()
   await loadLogs()
+
+  // Mark as seen now that we've loaded
+  markCurrentModuleSeen()
 }
 
 /* ================= POLLING ================= */
@@ -560,6 +589,8 @@ const startPolling = () => {
     try {
       const res = await api.get(`/logs/module/${route.params.id}`)
       logs.value = res.data.map(normalizeLog)
+      // Keep refreshing the seen timestamp while the user is actively on this page
+      markCurrentModuleSeen()
     } catch (err) {
       console.error('Poll error:', err)
     }
@@ -730,6 +761,8 @@ const saveLog = async () => {
 
     showModal.value = false
     await loadLogs()
+    // Re-stamp seen so our own new log doesn't show as unseen to ourselves
+    markCurrentModuleSeen()
     showToast(isEdit.value ? 'Log updated' : 'Log added', 'success')
 
   } catch (err) {
@@ -848,6 +881,19 @@ watch(() => route.params.id, async (newId, oldId) => {
 <style scoped>
 .page { padding: 24px; background: #f6f8fb; min-height: 100vh; font-family: Inter, Arial, sans-serif; color: #111827; box-sizing: border-box; }
 
+/* ===== NEW ROW HIGHLIGHT ===== */
+.row-new {
+  background: #f0fdf4 !important;
+  animation: row-fade-in 1.5s ease forwards;
+}
+.row-new td:first-child {
+  border-left: 3px solid #22c55e;
+}
+@keyframes row-fade-in {
+  0%   { background: #dcfce7; }
+  100% { background: #f0fdf4; }
+}
+
 /* ===== TOAST ===== */
 .toast { position: fixed; top: 20px; right: 20px; display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 10px; color: white; font-size: 13px; font-weight: 500; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
 .toast.success { background: #22c55e; }
@@ -958,10 +1004,10 @@ watch(() => route.params.id, async (newId, oldId) => {
 .cell-link { color: #2563eb; font-weight: 500; text-decoration: none; border-bottom: 1px dashed #93c5fd; transition: color 0.15s, border-color 0.15s; }
 .cell-link:hover { color: #1d4ed8; border-bottom-color: #1d4ed8; }
 
-/* ===== SELECT BADGE (dynamic color via inline style) ===== */
+/* ===== SELECT BADGE ===== */
 .select-badge { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 
-/* ===== MATURE ACTION BUTTONS ===== */
+/* ===== ACTION BUTTONS ===== */
 .action-btn {
   width: 30px;
   height: 30px;
@@ -1030,117 +1076,26 @@ watch(() => route.params.id, async (newId, oldId) => {
 
 /* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
-  /* Page padding — leave top room for hamburger button */
-  .page {
-    padding: 56px 12px 12px;
-  }
-
-  /* Topbar stacks vertically */
-  .topbar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
+  .page { padding: 56px 12px 12px; }
+  .topbar { flex-direction: column; align-items: flex-start; gap: 8px; }
   .topbar h1 { font-size: 16px; }
   .topbar p  { font-size: 12px; }
-  .topbar-actions {
-    width: 100%;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  /* Shrink action buttons on mobile */
-  .btn-primary,
-  .btn-outline,
-  .btn-filter {
-    padding: 7px 10px;
-    font-size: 12px;
-  }
-
-  /* Filter bar stacks */
-  .filter-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .filter-bar > * {
-    flex: unset;
-    width: 100%;
-  }
-
-  /* Table scrolls horizontally */
-  .table-wrapper {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  .table {
-    min-width: 480px;
-  }
-  .table th,
-  .table td {
-    padding: 10px 10px;
-    font-size: 12px;
-  }
-
-  /* Pagination stacks */
-  .pagination-bar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 10px 12px;
-  }
-  .pagination-controls {
-    width: 100%;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-  .page-size-select {
-    width: 100%;
-    margin-right: 0;
-    margin-bottom: 6px;
-  }
-  .page-btn {
-    min-width: 30px;
-    height: 30px;
-    font-size: 12px;
-  }
-
-  /* Modal takes full screen on mobile */
-  .modal-backdrop {
-    padding: 0;
-    align-items: flex-end;
-  }
-  .modal {
-    width: 100%;
-    max-width: 100%;
-    border-radius: 16px 16px 0 0;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-  }
-  .modal-body {
-    max-height: unset;
-    flex: 1;
-    overflow-y: auto;
-  }
-
-  /* Date dropdown full width on mobile */
-  .date-dropdown {
-    left: 0;
-    right: 0;
-    min-width: unset;
-    width: 100%;
-  }
-
-  /* Filter footer */
-  .filter-footer {
-    flex-direction: column-reverse;
-    align-items: stretch;
-    gap: 6px;
-  }
-  .filter-footer button {
-    width: 100%;
-    justify-content: center;
-  }
+  .topbar-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+  .btn-primary, .btn-outline, .btn-filter { padding: 7px 10px; font-size: 12px; }
+  .filter-bar { flex-direction: column; align-items: stretch; }
+  .filter-bar > * { flex: unset; width: 100%; }
+  .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table { min-width: 480px; }
+  .table th, .table td { padding: 10px 10px; font-size: 12px; }
+  .pagination-bar { flex-direction: column; align-items: flex-start; gap: 10px; padding: 10px 12px; }
+  .pagination-controls { width: 100%; flex-wrap: wrap; gap: 4px; }
+  .page-size-select { width: 100%; margin-right: 0; margin-bottom: 6px; }
+  .page-btn { min-width: 30px; height: 30px; font-size: 12px; }
+  .modal-backdrop { padding: 0; align-items: flex-end; }
+  .modal { width: 100%; max-width: 100%; border-radius: 16px 16px 0 0; max-height: 90vh; display: flex; flex-direction: column; }
+  .modal-body { max-height: unset; flex: 1; overflow-y: auto; }
+  .date-dropdown { left: 0; right: 0; min-width: unset; width: 100%; }
+  .filter-footer { flex-direction: column-reverse; align-items: stretch; gap: 6px; }
+  .filter-footer button { width: 100%; justify-content: center; }
 }
 </style>

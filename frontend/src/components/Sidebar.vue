@@ -62,11 +62,20 @@
             :key="item.id"
             :to="item.path"
             class="menu-link"
-            active-class="active"
+            :active-class="'active'"
             :title="collapsed ? item.name : ''"
-            @click="onNavClick"
+            @click="markSeen(item.id)"
           >
-            <component :is="item.icon" :size="17" class="menu-icon" />
+            <div class="menu-icon-wrap">
+              <component :is="item.icon" :size="17" class="menu-icon" />
+              <!-- Unseen badge: dot when collapsed, count when expanded -->
+              <span
+                v-if="unseenCounts[item.id] > 0"
+                :class="['unseen-badge', { dot: collapsed }]"
+              >
+                <template v-if="!collapsed">{{ unseenCounts[item.id] > 99 ? '99+' : unseenCounts[item.id] }}</template>
+              </span>
+            </div>
             <span v-if="!collapsed" class="menu-label">{{ item.name }}</span>
           </router-link>
         </div>
@@ -99,13 +108,15 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import api from '@/api/axios'
 import { Menu, LogOut, User, Settings, LayoutGrid, BarChart2 } from 'lucide-vue-next'
 
 const props = defineProps({ collapsed: Boolean })
 const emit  = defineEmits(['toggle', 'update:collapsed'])
 
-const activeProfile  = JSON.parse(localStorage.getItem('activeProfile') || '{}')
+const route         = useRoute()
+const activeProfile = JSON.parse(localStorage.getItem('activeProfile') || '{}')
 const COLORS = [
   '#6366f1','#0ea5e9','#10b981','#f59e0b',
   '#ec4899','#8b5cf6','#14b8a6','#f97316'
@@ -145,18 +156,65 @@ const onNavClick = () => {
   if (isMobile.value && !props.collapsed) emit('toggle')
 }
 
-onMounted(async () => {
-  window.addEventListener('resize', onResize)
-  if (isMobile.value && !props.collapsed) emit('toggle')
+/* ===== UNSEEN BADGE LOGIC ===== */
+// localStorage key: `imiss_last_seen_{moduleId}` → ISO timestamp string
+const unseenCounts = ref({})
 
+const SEEN_KEY = (id) => `imiss_last_seen_${id}`
+
+const markSeen = (moduleId) => {
+  localStorage.setItem(SEEN_KEY(moduleId), new Date().toISOString())
+  unseenCounts.value[moduleId] = 0
+  onNavClick()
+}
+
+// Fetch logs for all module items and count those newer than last-seen timestamp
+const refreshUnseenCounts = async () => {
+  const modules = moduleItems.value
+  if (!modules.length) return
+
+  await Promise.allSettled(
+    modules.map(async (item) => {
+      try {
+        // If user is currently viewing this module, treat as seen
+        if (route.params.id && String(route.params.id) === String(item.id)) {
+          localStorage.setItem(SEEN_KEY(item.id), new Date().toISOString())
+          unseenCounts.value[item.id] = 0
+          return
+        }
+
+        const lastSeen = localStorage.getItem(SEEN_KEY(item.id))
+        const res      = await api.get(`/logs/module/${item.id}`)
+        const logs     = res.data || []
+
+        if (!lastSeen) {
+          // Never visited — all existing logs count as unseen
+          unseenCounts.value[item.id] = logs.length
+        } else {
+          const lastSeenDate = new Date(lastSeen)
+          unseenCounts.value[item.id] = logs.filter(log => {
+            const created = log.createdAt || log.created_at || log.timestamp
+            return created && new Date(created) > lastSeenDate
+          }).length
+        }
+      } catch {
+        // Silently skip if module logs can't be fetched
+        unseenCounts.value[item.id] = unseenCounts.value[item.id] ?? 0
+      }
+    })
+  )
+}
+
+/* ===== LOAD MENU ITEMS ===== */
+const loadMenuItems = async () => {
   try {
-    const activeProfile = JSON.parse(localStorage.getItem('activeProfile'))
+    const storedProfile = JSON.parse(localStorage.getItem('activeProfile'))
     const user          = JSON.parse(localStorage.getItem('user'))
-    if (!activeProfile || !user) return
+    if (!storedProfile || !user) return
 
     const isAdmin =
-      activeProfile.team?.toLowerCase?.() === 'admin' ||
-      activeProfile.name?.toLowerCase?.() === 'admin'
+      storedProfile.team?.toLowerCase?.() === 'admin' ||
+      storedProfile.name?.toLowerCase?.() === 'admin'
 
     const res     = await api.get(`/modules/${user.id}`)
     const modules = res.data || []
@@ -182,7 +240,7 @@ onMounted(async () => {
             const allowed = typeof mod.allowedProfiles === 'string'
               ? JSON.parse(mod.allowedProfiles)
               : mod.allowedProfiles || []
-            return allowed.includes(activeProfile.id)
+            return allowed.includes(storedProfile.id)
           } catch { return false }
         })
         .map(mod => ({
@@ -193,13 +251,46 @@ onMounted(async () => {
           isAdmin: false
         }))
     }
+
+    // After loading modules, compute unseen counts
+    await refreshUnseenCounts()
   } catch (err) {
     console.error('Sidebar load error:', err)
     menuItems.value = []
   }
+}
+
+/* ===== POLLING: refresh unseen counts every 30s ===== */
+let unseenPollInterval = null
+
+const startUnseenPolling = () => {
+  unseenPollInterval = setInterval(() => {
+    if (!document.hidden) refreshUnseenCounts()
+  }, 30_000)
+}
+
+const stopUnseenPolling = () => {
+  if (unseenPollInterval) { clearInterval(unseenPollInterval); unseenPollInterval = null }
+}
+
+/* ===== LISTEN FOR MODULE-CREATED EVENT (from ManageModules page) ===== */
+const onModuleCreated = () => loadMenuItems()
+
+onMounted(async () => {
+  window.addEventListener('resize', onResize)
+  window.addEventListener('imiss:module-created', onModuleCreated)
+
+  if (isMobile.value && !props.collapsed) emit('toggle')
+
+  await loadMenuItems()
+  startUnseenPolling()
 })
 
-onUnmounted(() => window.removeEventListener('resize', onResize))
+onUnmounted(() => {
+  window.removeEventListener('resize', onResize)
+  window.removeEventListener('imiss:module-created', onModuleCreated)
+  stopUnseenPolling()
+})
 
 const adminItems  = computed(() => menuItems.value.filter(i => i.isAdmin))
 const moduleItems = computed(() => menuItems.value.filter(i => !i.isAdmin))
@@ -406,8 +497,56 @@ const logout = () => {
 
 .sidebar:not(.mobile).collapsed .menu-link { justify-content: center; padding: 9px; }
 
+/* ===== ICON WRAP + UNSEEN BADGE ===== */
+.menu-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .menu-icon  { flex-shrink: 0; color: currentColor; }
-.menu-label { overflow: hidden; text-overflow: ellipsis; }
+.menu-label { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+
+/* Count badge (expanded sidebar) */
+.unseen-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  margin-left: auto;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(239,68,68,0.4);
+  /* Subtle pulse to draw attention */
+  animation: badge-pulse 2.5s ease-in-out infinite;
+}
+
+/* Dot badge (collapsed sidebar) */
+.unseen-badge.dot {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  min-width: 8px;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 1.5px solid #111827;
+  border-radius: 50%;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.7; }
+}
 
 .empty-state {
   font-size: 12px;
