@@ -13,7 +13,6 @@
       <!-- ===== TOP / LOGO ===== -->
       <div class="sidebar-top">
         <div class="logo-wrap">
-          <div class="logo-mark">{{ orgInitials }}</div>
           <span v-if="!collapsed" class="logo-text">{{ organizationName || 'IMISS' }}</span>
         </div>
         <button class="toggle-btn" @click="$emit('toggle')" :title="collapsed ? 'Expand' : 'Collapse'">
@@ -382,14 +381,16 @@ const logout = () => {
 }
 
 .logo-text {
-  font-size: 14px;
+  font-size: 1.4rem;
   font-weight: 700;
   color: white;
-  letter-spacing: 0.3px;
-  font-family: Inter, Arial, sans-serif;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  letter-spacing: 1px;
+  transition: all 0.3s ease;
+}
+
+.logo-text:hover {
+  color: #4facfe;
+  transform: translateX(3px);
 }
 
 .toggle-btn {

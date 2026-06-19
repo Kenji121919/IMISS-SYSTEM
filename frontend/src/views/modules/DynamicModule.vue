@@ -761,7 +761,7 @@ const saveLog = async () => {
 
     showModal.value = false
     await loadLogs()
-    // Re-stamp seen so our own new log doesn't show as unseen to ourselves
+    
     markCurrentModuleSeen()
     showToast(isEdit.value ? 'Log updated' : 'Log added', 'success')
 

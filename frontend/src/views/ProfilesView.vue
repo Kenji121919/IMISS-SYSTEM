@@ -4,9 +4,7 @@
     <!-- ===== TOPBAR ===== -->
     <div class="topbar">
       <div class="logo-wrap">
-        <div class="logo-mark">
-          {{ orgInitials }}
-        </div>
+        
         <span class="logo-text">{{ organizationName || 'IMISS' }}</span>
       </div>
       <button class="btn-logout" @click="logout">
@@ -270,14 +268,16 @@ const logout = () => {
 }
 
 .logo-text {
-  font-size: 15px;
+  font-size: 1.4rem;
   font-weight: 700;
   color: white;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 220px;
+  letter-spacing: 1px;
+  transition: all 0.3s ease;
+}
+
+.logo-text:hover {
+  color: #4facfe;
+  transform: translateX(3px);
 }
 
 .btn-logout {
