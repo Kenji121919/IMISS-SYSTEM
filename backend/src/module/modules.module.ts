@@ -6,12 +6,14 @@ import { ModuleColumn } from '../entities/module-column.entity'
 
 import { ModulesService } from './modules.service'
 import { ModulesController } from './modules.controller'
+import { TemplateMapping } from '../entities/template-mapping.entity'
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       ModuleEntity,
-      ModuleColumn, // ✅ ADD THIS
+      ModuleColumn,
+    
     ]),
   ],
   controllers: [ModulesController],

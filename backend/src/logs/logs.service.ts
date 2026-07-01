@@ -4,6 +4,10 @@ import { Repository } from 'typeorm'
 import { Log } from '../entities/log.entity'
 import { Module } from '../entities/module.entity'
 import { AuditService } from '../audit/audit.service'
+import * as ExcelJS from 'exceljs'
+import * as path from 'path'
+import * as fs from 'fs'
+import { NotFoundException } from '@nestjs/common'
 
 @Injectable()
 export class LogsService {
@@ -106,5 +110,43 @@ export class LogsService {
   })
 
   return this.logRepo.delete(id)
+}
+
+async exportExcel(moduleId: number, filters: any) {
+  // Load the module so we know which template to use
+  const module = await this.moduleRepo.findOne({
+    where: { id: moduleId },
+  })
+
+  if (!module) {
+    throw new NotFoundException('Module not found')
+  }
+
+  if (!module.templateFile) {
+    throw new NotFoundException('No Excel template uploaded for this module.')
+  }
+
+  const templatePath = path.join(
+    process.cwd(),
+    'uploads',
+    'templates',
+    module.templateFile,
+  )
+
+  if (!fs.existsSync(templatePath)) {
+    throw new NotFoundException('Template file does not exist.')
+  }
+
+  const workbook = new ExcelJS.Workbook()
+
+  await workbook.xlsx.readFile(templatePath)
+
+  const worksheet = workbook.worksheets[0]
+
+  // TEMPORARY
+  // Just verify the template loads correctly
+  worksheet.getCell('A1').value = 'IMISS DAILY LOGS EXPORT'
+
+  return workbook.xlsx.writeBuffer()
 }
 }

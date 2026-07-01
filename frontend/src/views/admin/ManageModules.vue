@@ -222,6 +222,32 @@
             </div>
           </div>
         </div>
+          <div class="section">
+  <div class="section-label">Excel Template</div>
+
+  <input
+    type="file"
+    accept=".xlsx,.xls"
+    @change="onTemplateSelected"
+  />
+
+  <div
+    v-if="selectedTemplate"
+    style="margin-top:8px;font-size:13px;color:#16a34a;"
+  >
+    Selected:
+    {{ selectedTemplate.name }}
+  </div>
+
+  <div
+    v-else-if="editModule.templateFile"
+    style="margin-top:8px;font-size:13px;color:#64748b;"
+  >
+    Current:
+    {{ editModule.templateFile }}
+  </div>
+</div>
+
 
         <!-- FOOTER -->
         <div class="editor-footer">
@@ -286,6 +312,7 @@ const profiles = ref([])
 const activeModule = ref(null)
 const editorMode = ref(null) // 'create' | 'edit' | null
 const saving = ref(false)
+const selectedTemplate = ref(null)
 
 const editModule = ref({
   name: '',
@@ -338,8 +365,11 @@ const loadProfiles = async () => {
 
 /* ================= EDITOR ================= */
 const openCreate = () => {
+  selectedTemplate.value = null
+
   activeModule.value = null
   editorMode.value = 'create'
+
   editModule.value = {
     name: '',
     columns: [{
@@ -457,20 +487,69 @@ const formatColumns = (columns) =>
       : []
   }))
 
+/* ================================== */
+
+  const onTemplateSelected = (event) => {
+  const file = event.target.files[0]
+
+  if (!file) {
+    selectedTemplate.value = null
+    return
+  }
+
+  const allowed = [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel'
+  ]
+
+  if (!allowed.includes(file.type)) {
+    showToast('Please select a valid Excel file.', 'error')
+    event.target.value = ''
+    selectedTemplate.value = null
+    return
+  }
+
+  selectedTemplate.value = file
+}
 /* ================= CREATE ================= */
 const createModule = async () => {
-  if (!editModule.value.name.trim()) return showToast('Module name required', 'error')
+  if (!editModule.value.name.trim()) {
+    return showToast('Module name required', 'error')
+  }
+
   saving.value = true
+
   try {
-    await api.post('/modules', {
+    const res = await api.post('/modules', {
       name: editModule.value.name,
       columns: formatColumns(editModule.value.columns),
       allowedProfiles: editModule.value.allowedProfiles,
-      userId: user.id
+      userId: user.id,
     })
+
+    if (selectedTemplate.value) {
+      const formData = new FormData()
+
+      formData.append('file', selectedTemplate.value)
+
+      await api.post(
+        `/modules/${res.data.id}/template`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        },
+      )
+    }
+
     await loadModules()
+
+    selectedTemplate.value = null
+
     closeEditor()
-    showToast('Module created', 'success')
+
+    showToast('Module created successfully.')
   } catch (err) {
     console.error(err)
     showToast('Failed to create module', 'error')
@@ -489,7 +568,23 @@ const updateModule = async () => {
       columns: formatColumns(editModule.value.columns),
       allowedProfiles: editModule.value.allowedProfiles.map(Number)
     })
+        if (selectedTemplate.value) {
+  const formData = new FormData()
+
+  formData.append('file', selectedTemplate.value)
+
+  await api.post(
+    `/modules/${editModule.value.id}/template`,
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    },
+  )
+}
     await loadModules()
+    selectedTemplate.value = null
     closeEditor()
     showToast('Module updated', 'success')
   } catch (err) {

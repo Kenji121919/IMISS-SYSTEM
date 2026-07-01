@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Param, Put, Delete } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  Query,
+  Res,
+} from '@nestjs/common'
 import { LogsService } from './logs.service'
 
 @Controller('logs')
@@ -26,4 +36,25 @@ export class LogsController {
   delete(@Param('id') id: number, @Body() body: any) {
     return this.service.remove(Number(id), undefined, body?._profileName)
   }
+
+ @Get('module/:moduleId/export')
+async exportExcel(
+  @Param('moduleId') moduleId: number,
+  @Query() query: any,
+  @Res() res,
+) {
+  const buffer = await this.service.exportExcel(
+    Number(moduleId),
+    query,
+  )
+
+  res.set({
+    'Content-Type':
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'Content-Disposition':
+      'attachment; filename="export.xlsx"',
+  })
+
+  res.send(buffer)
+}
 }

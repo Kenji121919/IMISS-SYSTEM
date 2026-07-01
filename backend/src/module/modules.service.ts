@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { Module } from '../entities/module.entity'
 import { ModuleColumn } from '../entities/module-column.entity'
+import { TemplateMapping } from '../entities/template-mapping.entity'
 
 @Injectable()
 export class ModulesService {
@@ -122,4 +123,24 @@ export class ModulesService {
   async delete(id: number) {
     return this.repo.delete(id)
   }
+
+  // ================= SAVE TEMPLATE =================
+async saveTemplate(id: number, filename: string) {
+  const module = await this.repo.findOne({
+    where: { id },
+  })
+
+  if (!module) {
+    throw new Error('Module not found')
+  }
+
+  module.templateFile = filename
+
+  await this.repo.save(module)
+
+  return {
+    success: true,
+    filename,
+  }
+}
 }

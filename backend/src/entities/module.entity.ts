@@ -8,6 +8,7 @@ import {
 import { ModuleColumn } from './module-column.entity'
 import { Log } from './log.entity'
 
+
 @Entity()
 export class Module {
   @PrimaryGeneratedColumn()
@@ -30,4 +31,11 @@ export class Module {
 
   @OneToMany(() => Log, log => log.module)
   logs!: Log[]
+
+  @Column({
+    nullable:true
+  })
+  templateFile!:string;
+
+  
 }
