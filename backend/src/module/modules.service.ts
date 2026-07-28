@@ -3,7 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { Module } from '../entities/module.entity'
 import { ModuleColumn } from '../entities/module-column.entity'
-import { TemplateMapping } from '../entities/template-mapping.entity'
 
 @Injectable()
 export class ModulesService {
@@ -21,7 +20,14 @@ export class ModulesService {
       name:               body.name,
       allowedProfilesRaw: JSON.stringify((body.allowedProfiles || []).map(Number)),
       userId:             body.userId,
+      templateStartRow:    body.templateStartRow ?? 8,
+      templateRowsPerPage: body.templateRowsPerPage ?? 9,
     })
+
+    // templateMappings is a getter/setter, not a plain @Column,
+    // so it must be assigned directly on the entity instance to trigger the setter.
+    module.templateMappings = body.templateMappings ?? []
+
     const saved = await this.repo.save(module)
 
     const columns = (body.columns || []).map((col: any) =>
@@ -52,6 +58,7 @@ export class ModulesService {
         try { return JSON.parse((m as any).allowedProfilesRaw || '[]') }
         catch { return [] }
       })(),
+      templateMappings: m.templateMappings,
       columns: m.columns.map(c => ({
         ...c,
         options: (() => {
@@ -75,6 +82,7 @@ export class ModulesService {
         try { return JSON.parse((mod as any).allowedProfilesRaw || '[]') }
         catch { return [] }
       })(),
+      templateMappings: mod.templateMappings,
       columns: mod.columns.map(c => ({
         ...c,
         options: (() => {
@@ -111,10 +119,15 @@ export class ModulesService {
 
     if (newColumns.length) await this.colRepo.save(newColumns)
 
-    await this.repo.update(id, {
-      name:               body.name,
-      allowedProfilesRaw: JSON.stringify((body.allowedProfiles || []).map(Number)),
-    })
+    // Same rule as create(): assign via the entity instance so the
+    // templateMappings setter (-> templateMappingsRaw) actually fires.
+    module.name               = body.name
+    module.allowedProfilesRaw = JSON.stringify((body.allowedProfiles || []).map(Number))
+    module.templateStartRow    = body.templateStartRow ?? 8
+    module.templateRowsPerPage = body.templateRowsPerPage ?? 9
+    module.templateMappings    = body.templateMappings ?? module.templateMappings
+
+    await this.repo.save(module)
 
     return this.findOne(id)
   }
@@ -125,22 +138,28 @@ export class ModulesService {
   }
 
   // ================= SAVE TEMPLATE =================
-async saveTemplate(id: number, filename: string) {
-  const module = await this.repo.findOne({
-    where: { id },
-  })
+  async saveTemplate(
+    id: number,
+    filename: string,
+    originalName: string,
+    mimetype: string,
+  ) {
+    const module = await this.repo.findOne({ where: { id } })
 
-  if (!module) {
-    throw new Error('Module not found')
+    if (!module) {
+      throw new Error('Module not found')
+    }
+
+    module.templateFile     = filename
+    module.templateFileName = originalName
+    module.templateFileMime = mimetype
+
+    await this.repo.save(module)
+
+    return {
+      success: true,
+      filename,
+      originalName,
+    }
   }
-
-  module.templateFile = filename
-
-  await this.repo.save(module)
-
-  return {
-    success: true,
-    filename,
-  }
-}
 }

@@ -6,13 +6,17 @@ import {
   Delete,
   Body,
   Param,
+  Res,
+  NotFoundException,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common'
 
 import { FileInterceptor } from '@nestjs/platform-express'
 import { diskStorage } from 'multer'
-
+import type { Response } from 'express'
+import { join } from 'path'
+import { existsSync } from 'fs'
 import { extname } from 'path'
 
 import { ModulesService } from './modules.service'
@@ -46,6 +50,7 @@ export class ModulesController {
     return this.service.delete(Number(id))
   }
 
+  // ================= UPLOAD TEMPLATE =================
   @Post(':id/template')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -84,6 +89,32 @@ export class ModulesController {
     return this.service.saveTemplate(
       Number(id),
       file.filename,
+      file.originalname,
+      file.mimetype,
     )
+  }
+
+  // ================= FETCH TEMPLATE (for re-mapping / fill) =================
+  @Get(':id/template')
+  async getTemplate(@Param('id') id: number, @Res() res: Response) {
+    const module: any = await this.service.findOne(Number(id))
+    if (!module || !module.templateFile) {
+      throw new NotFoundException('No template uploaded for this module')
+    }
+
+    const filePath = join(process.cwd(), 'uploads', 'templates', module.templateFile)
+    if (!existsSync(filePath)) {
+      throw new NotFoundException('Template file missing on disk')
+    }
+
+    res.setHeader(
+      'Content-Type',
+      module.templateFileMime || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${module.templateFileName || module.templateFile}"`
+    )
+    return res.sendFile(filePath)
   }
 }

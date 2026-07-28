@@ -33,9 +33,32 @@ export class Module {
   logs!: Log[]
 
   @Column({
-    nullable:true
+    type: 'longtext',
+    nullable: true
   })
-  templateFile!:string;
+  templateFile!: string
 
-  
+  @Column({
+    nullable: true
+  })
+  templateFileName!: string
+
+  @Column({
+    nullable: true
+  })
+  templateFileMime!: string
+
+  @Column({ type: 'json', nullable: true })
+  templateMappings!: { column: string; cell: string }[]
+
+  @Column({
+    default: 8
+  })
+  templateStartRow!: number
+
+  @Column({
+    default: 9
+  })
+  templateRowsPerPage!: number
+
 }

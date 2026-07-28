@@ -223,7 +223,9 @@
           </div>
         </div>
           <div class="section">
-  <div class="section-label">Excel Template</div>
+  <!-- ================= TEMPLATE MAPPING ================= -->
+<div class="section">
+  <div class="section-label">Print / Export Template</div>
 
   <input
     type="file"
@@ -231,23 +233,73 @@
     @change="onTemplateSelected"
   />
 
-  <div
-    v-if="selectedTemplate"
-    style="margin-top:8px;font-size:13px;color:#16a34a;"
-  >
-    Selected:
-    {{ selectedTemplate.name }}
+  <div v-if="selectedTemplate" style="margin-top:6px;font-size:12px;color:#16a34a;">
+    Selected: {{ selectedTemplate.name }} — click cells below to map columns
+  </div>
+  <div v-else-if="editModule.templateFile" style="margin-top:6px;font-size:12px;color:#64748b;display:flex;align-items:center;gap:8px;">
+    Current: {{ editModule.templateFile }}
+    <button class="btn-copy-opt" @click="loadExistingTemplateForMapping" type="button">Edit mapping</button>
   </div>
 
-  <div
-    v-else-if="editModule.templateFile"
-    style="margin-top:8px;font-size:13px;color:#64748b;"
-  >
-    Current:
-    {{ editModule.templateFile }}
+  <!-- LEGEND: which columns are mapped -->
+  <div v-if="previewGrid.length" class="mapping-legend">
+    <div
+      v-for="(col, i) in editModule.columns.filter(c => c.name)"
+      :key="col.uid"
+      class="legend-chip"
+      :style="{ borderColor: colorForColumn(i), color: colorForColumn(i) }"
+    >
+      <span class="legend-dot" :style="{ background: colorForColumn(i) }"></span>
+      {{ col.name }}
+      <span v-if="mappingForColumn(col.name)" class="legend-cell">
+        → {{ mappingForColumn(col.name).cell }}
+        <button class="legend-clear" @click="clearMappingForColumn(col.name)" type="button">✕</button>
+      </span>
+      <span v-else class="legend-unmapped">unmapped</span>
+    </div>
+  </div>
+
+  <!-- SHEET PREVIEW -->
+  <div v-if="previewGrid.length" class="sheet-preview-wrap">
+    <table class="sheet-preview">
+      <tbody>
+        <tr v-for="(row, r) in previewGrid" :key="r">
+          <template v-for="(cell, c) in row" :key="c">
+            <td
+              v-if="!cell.hidden"
+              :rowspan="cell.rowspan"
+              :colspan="cell.colspan"
+              :class="['preview-cell', { mapped: mappingForCell(cell.address) }]"
+              :style="mappingForCell(cell.address) ? cellMappedStyle(cell.address) : {}"
+              @click="onCellClick(cell.address)"
+              :title="cell.address"
+            >
+              <span class="preview-cell-text">{{ cell.value }}</span>
+              <span v-if="mappingForCell(cell.address)" class="preview-cell-tag">
+                {{ mappingForCell(cell.address).column }}
+              </span>
+            </td>
+          </template>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- COLUMN PICKER POPOVER -->
+  <div v-if="pickerCell" class="cell-picker-backdrop" @click.self="pickerCell = null">
+    <div class="cell-picker">
+      <div class="cell-picker-title">Map cell {{ pickerCell }} to:</div>
+      <div
+        v-for="col in editModule.columns.filter(c => c.name)"
+        :key="col.uid"
+        class="cell-picker-option"
+        @click="assignMapping(col.name, pickerCell)"
+      >{{ col.name }}</div>
+      <div class="cell-picker-option clear" @click="pickerCell = null">Cancel</div>
+    </div>
   </div>
 </div>
-
+</div>
 
         <!-- FOOTER -->
         <div class="editor-footer">
@@ -305,6 +357,7 @@
 import { ref, onMounted } from 'vue'
 import draggable from 'vuedraggable'
 import api from '@/api/axios'
+import * as XLSX from 'xlsx'
 
 /* ================= STATE ================= */
 const modules = ref([])
@@ -317,7 +370,10 @@ const selectedTemplate = ref(null)
 const editModule = ref({
   name: '',
   columns: [],
-  allowedProfiles: []
+  allowedProfiles: [],
+  templateStartRow: 8,
+  templateRowsPerPage: 9,
+  templateMappings: [],
 })
 
 const showDeleteModal = ref(false)
@@ -331,6 +387,119 @@ const toast = ref({ show: false, message: '', type: 'success' })
 const showToast = (message, type = 'success') => {
   toast.value = { show: true, message, type }
   setTimeout(() => { toast.value.show = false }, 2500)
+}
+
+/* ================= TEMPLATE MAPPING STATE ================= */
+const previewGrid = ref([])      // 2D array of { value, address, rowspan, colspan, hidden }
+const pickerCell  = ref(null)    // cell address currently being assigned
+const workbookRef = ref(null)    // parsed workbook, kept in case we need to re-export later
+
+const MAPPING_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
+const colorForColumn = (i) => MAPPING_COLORS[i % MAPPING_COLORS.length]
+
+const mappingForCell = (address) =>
+  (editModule.value.templateMappings || []).find(m => m.cell === address)
+
+const mappingForColumn = (colName) =>
+  (editModule.value.templateMappings || []).find(m => m.column === colName)
+
+const cellMappedStyle = (address) => {
+  const m = mappingForCell(address)
+  if (!m) return {}
+  const i = editModule.value.columns.findIndex(c => c.name === m.column)
+  const color = colorForColumn(i === -1 ? 0 : i)
+  return { background: color + '1a', borderColor: color, color }
+}
+
+const onCellClick = (address) => {
+  pickerCell.value = address
+}
+
+const assignMapping = (columnName, cellAddress) => {
+  // one cell = one column; remove any prior mapping using either this cell or this column
+  editModule.value.templateMappings = (editModule.value.templateMappings || [])
+    .filter(m => m.cell !== cellAddress && m.column !== columnName)
+  editModule.value.templateMappings.push({ column: columnName, cell: cellAddress })
+  pickerCell.value = null
+}
+
+const clearMappingForColumn = (columnName) => {
+  editModule.value.templateMappings = (editModule.value.templateMappings || [])
+    .filter(m => m.column !== columnName)
+}
+
+/* ================= BUILD PREVIEW GRID (handles merged cells) ================= */
+const buildPreviewGrid = (worksheet) => {
+  const sheetRef = worksheet['!ref']
+  if (!sheetRef) { previewGrid.value = []; return }
+  const range = XLSX.utils.decode_range(sheetRef)
+  const merges = worksheet['!merges'] || []
+
+  const anchorInfo = {}
+  const hiddenSet = new Set()
+  merges.forEach(m => {
+    const rowspan = m.e.r - m.s.r + 1
+    const colspan = m.e.c - m.s.c + 1
+    anchorInfo[`${m.s.r},${m.s.c}`] = { rowspan, colspan }
+    for (let r = m.s.r; r <= m.e.r; r++) {
+      for (let c = m.s.c; c <= m.e.c; c++) {
+        if (r === m.s.r && c === m.s.c) continue
+        hiddenSet.add(`${r},${c}`)
+      }
+    }
+  })
+
+  const grid = []
+  const maxRow = Math.min(range.e.r, 80) // cap preview so huge sheets don't choke the browser
+  for (let r = range.s.r; r <= maxRow; r++) {
+    const row = []
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const address = XLSX.utils.encode_cell({ r, c })
+      const key = `${r},${c}`
+      if (hiddenSet.has(key)) {
+        row.push({ hidden: true })
+        continue
+      }
+      const cellObj = worksheet[address]
+      const info = anchorInfo[key]
+      row.push({
+        address,
+        value: cellObj ? String(cellObj.v ?? '') : '',
+        rowspan: info?.rowspan || 1,
+        colspan: info?.colspan || 1,
+        hidden: false,
+      })
+    }
+    grid.push(row)
+  }
+  previewGrid.value = grid
+}
+
+const parseWorkbookFile = (file) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const wb = XLSX.read(e.target.result, { type: 'array' })
+    workbookRef.value = wb
+    const firstSheet = wb.Sheets[wb.SheetNames[0]]
+    buildPreviewGrid(firstSheet)
+  }
+  reader.readAsArrayBuffer(file)
+}
+
+/* ================= FETCH EXISTING TEMPLATE FOR RE-MAPPING ================= */
+// Assumes a backend endpoint that returns the stored template's raw bytes.
+// Adjust the URL/response handling to match your actual API.
+const loadExistingTemplateForMapping = async () => {
+  try {
+    const res = await api.get(`/modules/${editModule.value.id}/template`, { responseType: 'arraybuffer' })
+    const wb = XLSX.read(res.data, { type: 'array' })
+    workbookRef.value = wb
+    const firstSheet = wb.Sheets[wb.SheetNames[0]]
+    buildPreviewGrid(firstSheet)
+  } catch (err) {
+    console.error(err)
+    showToast('Could not load existing template for mapping', 'error')
+  }
 }
 
 /* ================= INIT ================= */
@@ -366,6 +535,8 @@ const loadProfiles = async () => {
 /* ================= EDITOR ================= */
 const openCreate = () => {
   selectedTemplate.value = null
+  previewGrid.value = []
+  workbookRef.value = null
 
   activeModule.value = null
   editorMode.value = 'create'
@@ -381,13 +552,19 @@ const openCreate = () => {
       filterable: false,
       required: false
     }],
-    allowedProfiles: []
+    allowedProfiles: [],
+    templateStartRow: 8,
+    templateRowsPerPage: 9,
+    templateMappings: [],
   }
 }
 
 const openEdit = (m) => {
   activeModule.value = m
   editorMode.value = 'edit'
+  selectedTemplate.value = null
+  previewGrid.value = []
+  workbookRef.value = null
 
   let parsedColumns = m.columns
   if (typeof parsedColumns === 'string') parsedColumns = JSON.parse(parsedColumns)
@@ -399,17 +576,22 @@ const openEdit = (m) => {
           uid: Date.now() + Math.random(),
           ...col,
           parsedOptions: (() => {
-  const raw = typeof col.options === 'string'
-    ? JSON.parse(col.options)
-    : (col.options || [])
-  return raw.map(o =>
-    typeof o === 'object' ? o : { label: o, color: '#6b7280' }
-  )
-})(),
+            const raw = typeof col.options === 'string'
+              ? JSON.parse(col.options)
+              : (col.options || [])
+            return raw.map(o =>
+              typeof o === 'object' ? o : { label: o, color: '#6b7280' }
+            )
+          })(),
           baseUrl: col.baseUrl || ''
         }))
       : [],
-    allowedProfiles: m.allowedProfiles?.map(p => Number(typeof p === 'object' ? p.id : p)) || []
+    allowedProfiles: m.allowedProfiles?.map(p => Number(typeof p === 'object' ? p.id : p)) || [],
+    templateStartRow: 8,
+    templateRowsPerPage: 9,
+    templateMappings: m.templateMappings
+      ? (typeof m.templateMappings === 'string' ? JSON.parse(m.templateMappings) : m.templateMappings)
+      : [],
   }
 }
 
@@ -459,13 +641,13 @@ const otherSelectColumns = (current) => {
 }
 
 const copyOptionsFrom = (target, source) => {
-  // Deep copy — editing one won't affect the other
   target.parsedOptions = source.parsedOptions.map((o) => ({
     label: o.label,
     color: o.color,
   }))
   copyMenuOpen.value = null
 }
+
 /* ================= PROFILES ================= */
 const toggleProfile = (id) => {
   const list = editModule.value.allowedProfiles
@@ -487,21 +669,15 @@ const formatColumns = (columns) =>
       : []
   }))
 
-/* ================================== */
-
-  const onTemplateSelected = (event) => {
+/* ================= TEMPLATE FILE SELECTION ================= */
+const onTemplateSelected = (event) => {
   const file = event.target.files[0]
-
-  if (!file) {
-    selectedTemplate.value = null
-    return
-  }
+  if (!file) { selectedTemplate.value = null; previewGrid.value = []; return }
 
   const allowed = [
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.ms-excel'
   ]
-
   if (!allowed.includes(file.type)) {
     showToast('Please select a valid Excel file.', 'error')
     event.target.value = ''
@@ -510,7 +686,10 @@ const formatColumns = (columns) =>
   }
 
   selectedTemplate.value = file
+  editModule.value.templateMappings = []   // fresh file = fresh mapping
+  parseWorkbookFile(file)
 }
+
 /* ================= CREATE ================= */
 const createModule = async () => {
   if (!editModule.value.name.trim()) {
@@ -524,31 +703,26 @@ const createModule = async () => {
       name: editModule.value.name,
       columns: formatColumns(editModule.value.columns),
       allowedProfiles: editModule.value.allowedProfiles,
+      templateStartRow: editModule.value.templateStartRow,
+      templateRowsPerPage: editModule.value.templateRowsPerPage,
+      templateMappings: editModule.value.templateMappings,
       userId: user.id,
     })
 
     if (selectedTemplate.value) {
       const formData = new FormData()
-
       formData.append('file', selectedTemplate.value)
 
       await api.post(
         `/modules/${res.data.id}/template`,
         formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        },
+        { headers: { 'Content-Type': 'multipart/form-data' } },
       )
     }
 
     await loadModules()
-
     selectedTemplate.value = null
-
     closeEditor()
-
     showToast('Module created successfully.')
   } catch (err) {
     console.error(err)
@@ -566,23 +740,23 @@ const updateModule = async () => {
     await api.put(`/modules/${editModule.value.id}`, {
       name: editModule.value.name,
       columns: formatColumns(editModule.value.columns),
-      allowedProfiles: editModule.value.allowedProfiles.map(Number)
+      allowedProfiles: editModule.value.allowedProfiles.map(Number),
+      templateStartRow: editModule.value.templateStartRow,
+      templateRowsPerPage: editModule.value.templateRowsPerPage,
+      templateMappings: editModule.value.templateMappings,
     })
-        if (selectedTemplate.value) {
-  const formData = new FormData()
 
-  formData.append('file', selectedTemplate.value)
+    if (selectedTemplate.value) {
+      const formData = new FormData()
+      formData.append('file', selectedTemplate.value)
 
-  await api.post(
-    `/modules/${editModule.value.id}/template`,
-    formData,
-    {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    },
-  )
-}
+      await api.post(
+        `/modules/${editModule.value.id}/template`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      )
+    }
+
     await loadModules()
     selectedTemplate.value = null
     closeEditor()
@@ -1318,4 +1492,26 @@ const cancelDelete = () => {
     border-radius: 16px 16px 0 0;
   }
 }
+
+.mapping-legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.legend-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid; border-radius: 99px; padding: 3px 10px; font-size: 11px; background: white; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.legend-cell { font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+.legend-clear { background: none; border: none; cursor: pointer; color: inherit; font-size: 10px; padding: 0; }
+.legend-unmapped { color: #9ca3af; font-style: italic; }
+
+.sheet-preview-wrap { overflow: auto; max-height: 420px; border: 1px solid #eef2f7; border-radius: 10px; margin-top: 10px; }
+.sheet-preview { border-collapse: collapse; font-size: 11px; }
+.preview-cell { border: 1px solid #f1f5f9; padding: 5px 8px; min-width: 60px; max-width: 160px; cursor: pointer; vertical-align: top; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background 0.1s; }
+.preview-cell:hover { background: #f8fafc; }
+.preview-cell.mapped { border-width: 1.5px; }
+.preview-cell-text { display: block; }
+.preview-cell-tag { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-top: 2px; }
+
+.cell-picker-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; z-index: 10000; }
+.cell-picker { background: white; border-radius: 12px; padding: 8px; min-width: 220px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+.cell-picker-title { font-size: 12px; font-weight: 600; color: #6b7280; padding: 6px 10px; }
+.cell-picker-option { padding: 8px 10px; font-size: 13px; border-radius: 8px; cursor: pointer; }
+.cell-picker-option:hover { background: #eff6ff; color: #1d4ed8; }
+.cell-picker-option.clear { color: #ef4444; margin-top: 4px; border-top: 1px solid #f1f5f9; }
 </style>

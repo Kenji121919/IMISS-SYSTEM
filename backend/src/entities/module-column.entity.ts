@@ -24,27 +24,27 @@ export class ModuleColumn {
   required!: boolean
 
   @Column({
-  name: 'options_raw',
-  type: 'longtext',
-  nullable: true,
-  default: '[]',
-})
-optionsRaw!: string
+    name: 'options_raw',
+    type: 'longtext',
+    nullable: true,
+    default: '[]',
+  })
+  optionsRaw!: string
 
-get options(): { label: string; color: string }[] {
-  try {
-    return JSON.parse(this.optionsRaw || '[]')
-  } catch {
-    return []
+  get options(): { label: string; color: string }[] {
+    try {
+      return JSON.parse(this.optionsRaw || '[]')
+    } catch {
+      return []
+    }
   }
-}
 
-set options(val: { label: string; color: string }[]) {
-  this.optionsRaw = JSON.stringify(val || [])
-}
+  set options(val: { label: string; color: string }[]) {
+    this.optionsRaw = JSON.stringify(val || [])
+  }
 
   @Column({
-    name: 'base_url',        // ← explicit snake_case DB column name
+    name: 'base_url',
     type: 'varchar',
     length: 255,
     nullable: true,

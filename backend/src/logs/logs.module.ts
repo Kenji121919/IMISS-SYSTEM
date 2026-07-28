@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 
 import { LogsService } from './logs.service'
 import { LogsController } from './logs.controller'
-import { ExportService } from './export.service'
+import { ExportService } from '../export/export.service'
 
 import { Log } from '../entities/log.entity'
 import { Module as ModuleEntity } from '../entities/module.entity'
