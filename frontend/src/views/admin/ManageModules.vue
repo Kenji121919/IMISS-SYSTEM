@@ -222,84 +222,158 @@
             </div>
           </div>
         </div>
-          <div class="section">
-  <!-- ================= TEMPLATE MAPPING ================= -->
-<div class="section">
-  <div class="section-label">Print / Export Template</div>
 
-  <input
-    type="file"
-    accept=".xlsx,.xls"
-    @change="onTemplateSelected"
-  />
+        <!-- ================= PRINT / EXPORT TEMPLATES ================= -->
+        <div class="section" style="margin-top:16px;">
+          <div class="section-label">Print / export templates</div>
 
-  <div v-if="selectedTemplate" style="margin-top:6px;font-size:12px;color:#16a34a;">
-    Selected: {{ selectedTemplate.name }} — click cells below to map columns
-  </div>
-  <div v-else-if="editModule.templateFile" style="margin-top:6px;font-size:12px;color:#64748b;display:flex;align-items:center;gap:8px;">
-    Current: {{ editModule.templateFile }}
-    <button class="btn-copy-opt" @click="loadExistingTemplateForMapping" type="button">Edit mapping</button>
-  </div>
+          <!-- Existing templates summary (always visible, regardless of chooser state) -->
+          <div
+            v-if="editModule.templateFile || (editModule.templates || []).filter(t => t.kind === 'docx').length"
+            style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;"
+          >
+            <div v-if="editModule.templateFile" class="template-row">
+              <span class="template-row-icon">📊</span>
+              <span style="flex:1;">Excel — {{ editModule.templateFile }}</span>
+              <button class="btn-copy-opt" @click="startAddTemplate('excel')" type="button">Edit mapping</button>
+              <button class="btn-remove" @click="deleteExcelTemplate()" title="Remove" type="button" > ✕ </button>
+            </div>
 
-  <!-- LEGEND: which columns are mapped -->
-  <div v-if="previewGrid.length" class="mapping-legend">
-    <div
-      v-for="(col, i) in editModule.columns.filter(c => c.name)"
-      :key="col.uid"
-      class="legend-chip"
-      :style="{ borderColor: colorForColumn(i), color: colorForColumn(i) }"
-    >
-      <span class="legend-dot" :style="{ background: colorForColumn(i) }"></span>
-      {{ col.name }}
-      <span v-if="mappingForColumn(col.name)" class="legend-cell">
-        → {{ mappingForColumn(col.name).cell }}
-        <button class="legend-clear" @click="clearMappingForColumn(col.name)" type="button">✕</button>
-      </span>
-      <span v-else class="legend-unmapped">unmapped</span>
-    </div>
-  </div>
-
-  <!-- SHEET PREVIEW -->
-  <div v-if="previewGrid.length" class="sheet-preview-wrap">
-    <table class="sheet-preview">
-      <tbody>
-        <tr v-for="(row, r) in previewGrid" :key="r">
-          <template v-for="(cell, c) in row" :key="c">
-            <td
-              v-if="!cell.hidden"
-              :rowspan="cell.rowspan"
-              :colspan="cell.colspan"
-              :class="['preview-cell', { mapped: mappingForCell(cell.address) }]"
-              :style="mappingForCell(cell.address) ? cellMappedStyle(cell.address) : {}"
-              @click="onCellClick(cell.address)"
-              :title="cell.address"
+            <div
+              v-for="t in editModule.templates.filter(t => t.kind === 'docx')"
+              :key="t.id"
+              class="template-row"
             >
-              <span class="preview-cell-text">{{ cell.value }}</span>
-              <span v-if="mappingForCell(cell.address)" class="preview-cell-tag">
-                {{ mappingForCell(cell.address).column }}
-              </span>
-            </td>
-          </template>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+              <span class="template-row-icon">📄</span>
+              <span style="flex:1;">Word — {{ t.name }} ({{ t.fileName }})</span>
+              <button class="btn-remove" @click="deleteDocxTemplate(t.id)" title="Remove">✕</button>
+            </div>
+          </div>
 
-  <!-- COLUMN PICKER POPOVER -->
-  <div v-if="pickerCell" class="cell-picker-backdrop" @click.self="pickerCell = null">
-    <div class="cell-picker">
-      <div class="cell-picker-title">Map cell {{ pickerCell }} to:</div>
-      <div
-        v-for="col in editModule.columns.filter(c => c.name)"
-        :key="col.uid"
-        class="cell-picker-option"
-        @click="assignMapping(col.name, pickerCell)"
-      >{{ col.name }}</div>
-      <div class="cell-picker-option clear" @click="pickerCell = null">Cancel</div>
-    </div>
-  </div>
-</div>
-</div>
+          <!-- CHOOSER: pick which type of template to add -->
+          <div v-if="!addTemplateType" style="display:flex;gap:8px;">
+            <button class="btn-add-col template-choice-btn" @click="startAddTemplate('excel')" type="button">
+              + Add Excel template
+            </button>
+            <button class="btn-add-col template-choice-btn" @click="startAddTemplate('docx')" type="button">
+              + Add Word template
+            </button>
+          </div>
+
+          <!-- ADD/EDIT PANEL — only one template type shown at a time -->
+          <div v-else class="template-add-panel">
+            <div class="template-add-header">
+              <span class="section-label" style="margin:0;">
+                {{ addTemplateType === 'excel' ? 'Excel template (cell mapping)' : 'Word template (tag replace)' }}
+              </span>
+              <button class="btn-ghost-sm" @click="cancelAddTemplate" type="button">✕</button>
+            </div>
+
+            <!-- ===== EXCEL FLOW (legacy single-Excel-template) ===== -->
+            <template v-if="addTemplateType === 'excel'">
+
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                @change="onTemplateSelected"
+              />
+
+              <div v-if="selectedTemplate" style="margin-top:6px;font-size:12px;color:#16a34a;">
+                Selected: {{ selectedTemplate.name }} — click cells below to map columns
+              </div>
+              <div v-else-if="editModule.templateFile" style="margin-top:6px;font-size:12px;color:#64748b;">
+                Editing mapping for: {{ editModule.templateFile }}
+              </div>
+
+              <!-- LEGEND: which columns are mapped -->
+              <div v-if="previewGrid.length" class="mapping-legend">
+                <div
+                  v-for="(col, i) in editModule.columns.filter(c => c.name)"
+                  :key="col.uid"
+                  class="legend-chip"
+                  :style="{ borderColor: colorForColumn(i), color: colorForColumn(i) }"
+                >
+                  <span class="legend-dot" :style="{ background: colorForColumn(i) }"></span>
+                  {{ col.name }}
+                  <span v-if="mappingForColumn(col.name)" class="legend-cell">
+                    → {{ mappingForColumn(col.name).cell }}
+                    <button class="legend-clear" @click="clearMappingForColumn(col.name)" type="button">✕</button>
+                  </span>
+                  <span v-else class="legend-unmapped">unmapped</span>
+                </div>
+              </div>
+
+              <!-- SHEET PREVIEW -->
+              <div v-if="previewGrid.length" class="sheet-preview-wrap">
+                <table class="sheet-preview">
+                  <tbody>
+                    <tr v-for="(row, r) in previewGrid" :key="r">
+                      <template v-for="(cell, c) in row" :key="c">
+                        <td
+                          v-if="!cell.hidden"
+                          :rowspan="cell.rowspan"
+                          :colspan="cell.colspan"
+                          :class="['preview-cell', { mapped: mappingForCell(cell.address) }]"
+                          :style="mappingForCell(cell.address) ? cellMappedStyle(cell.address) : {}"
+                          @click="onCellClick(cell.address)"
+                          :title="cell.address"
+                        >
+                          <span class="preview-cell-text">{{ cell.value }}</span>
+                          <span v-if="mappingForCell(cell.address)" class="preview-cell-tag">
+                            {{ mappingForCell(cell.address).column }}
+                          </span>
+                        </td>
+                      </template>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- COLUMN PICKER POPOVER -->
+              <div v-if="pickerCell" class="cell-picker-backdrop" @click.self="pickerCell = null">
+                <div class="cell-picker">
+                  <div class="cell-picker-title">Map cell {{ pickerCell }} to:</div>
+                  <div
+                    v-for="col in editModule.columns.filter(c => c.name)"
+                    :key="col.uid"
+                    class="cell-picker-option"
+                    @click="assignMapping(col.name, pickerCell)"
+                  >{{ col.name }}</div>
+                  <div class="cell-picker-option clear" @click="pickerCell = null">Cancel</div>
+                </div>
+              </div>
+
+            </template>
+
+            <!-- ===== WORD (DOCX) FLOW (multi-template) ===== -->
+            <template v-else>
+
+              <div style="margin-bottom:8px;font-size:11px;color:#6b7280;line-height:1.6;">
+                In the Word file, replace each blank with the matching tag below:
+                <div style="margin-top:4px;">
+                  <code
+                    v-for="col in editModule.columns.filter(c => c.name)"
+                    :key="col.uid"
+                    style="display:inline-block;margin:2px 6px 2px 0;padding:2px 6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;color:#1d4ed8;"
+                  >{{ tagFor(col.name) }}</code>
+                </div>
+              </div>
+
+              <input
+                type="text"
+                v-model="newDocxName"
+                placeholder="Template name (e.g. Pull-Out Form)"
+                class="col-input"
+                style="margin-bottom:6px;max-width:280px;"
+              />
+              <input type="file" accept=".docx" @change="onDocxSelected" />
+              <div v-if="pendingDocxFile" style="margin-top:6px;font-size:12px;color:#16a34a;">
+                Selected: {{ pendingDocxFile.name }} — will upload on save
+              </div>
+
+            </template>
+          </div>
+        </div>
 
         <!-- FOOTER -->
         <div class="editor-footer">
@@ -374,6 +448,7 @@ const editModule = ref({
   templateStartRow: 8,
   templateRowsPerPage: 9,
   templateMappings: [],
+  templates: [],
 })
 
 const showDeleteModal = ref(false)
@@ -389,7 +464,24 @@ const showToast = (message, type = 'success') => {
   setTimeout(() => { toast.value.show = false }, 2500)
 }
 
-/* ================= TEMPLATE MAPPING STATE ================= */
+/* ================= TEMPLATE ADD/EDIT CHOOSER =================
+   Controls which single template flow (Excel or Word) is shown at a time,
+   instead of always rendering both upload UIs together. */
+const addTemplateType = ref(null) // null | 'excel' | 'docx'
+
+const startAddTemplate = (type) => {
+  addTemplateType.value = type
+  if (type === 'excel' && editModule.value.templateFile && !previewGrid.value.length) {
+    // Pull the existing workbook in so the mapping grid is ready to edit
+    loadExistingTemplateForMapping()
+  }
+}
+
+const cancelAddTemplate = () => {
+  addTemplateType.value = null
+}
+
+/* ================= TEMPLATE MAPPING STATE (legacy single-Excel-template) ================= */
 const previewGrid = ref([])      // 2D array of { value, address, rowspan, colspan, hidden }
 const pickerCell  = ref(null)    // cell address currently being assigned
 const workbookRef = ref(null)    // parsed workbook, kept in case we need to re-export later
@@ -486,9 +578,7 @@ const parseWorkbookFile = (file) => {
   reader.readAsArrayBuffer(file)
 }
 
-/* ================= FETCH EXISTING TEMPLATE FOR RE-MAPPING ================= */
-// Assumes a backend endpoint that returns the stored template's raw bytes.
-// Adjust the URL/response handling to match your actual API.
+/* ================= FETCH EXISTING TEMPLATE FOR RE-MAPPING (legacy) ================= */
 const loadExistingTemplateForMapping = async () => {
   try {
     const res = await api.get(`/modules/${editModule.value.id}/template`, { responseType: 'arraybuffer' })
@@ -499,6 +589,50 @@ const loadExistingTemplateForMapping = async () => {
   } catch (err) {
     console.error(err)
     showToast('Could not load existing template for mapping', 'error')
+  }
+}
+
+/* ================= WORD (DOCX) TEMPLATE STATE — new multi-template flow ================= */
+const newDocxName = ref('')
+const pendingDocxFile = ref(null)
+
+const onDocxSelected = (e) => {
+  pendingDocxFile.value = e.target.files[0] || null
+}
+
+// Called after createModule()/updateModule() succeed, if a docx is staged
+const uploadPendingDocxTemplate = async (moduleId) => {
+  if (!pendingDocxFile.value) return
+  try {
+    const formData = new FormData()
+    formData.append('file', pendingDocxFile.value)
+    formData.append('name', newDocxName.value || 'Pull-Out Form')
+    formData.append('kind', 'docx')
+    await api.post(`/modules/${moduleId}/templates`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  } catch (err) {
+    console.error(err)
+    showToast('Module saved, but the Word template failed to upload', 'error')
+  } finally {
+    pendingDocxFile.value = null
+    newDocxName.value = ''
+  }
+}
+
+// Builds the display tag (e.g. "{{DateStarted}}") for a column.
+// Kept as a function rather than inline template string concatenation,
+// since Vue's compiler misparses a literal '{{' inside a mustache expression.
+const tagFor = (name) => '{{' + name.replace(/[^a-zA-Z0-9]/g, '') + '}}'
+
+const deleteDocxTemplate = async (templateId) => {
+  try {
+    await api.delete(`/modules/templates/${templateId}`)
+    editModule.value.templates = (editModule.value.templates || []).filter(t => t.id !== templateId)
+    showToast('Template removed', 'success')
+  } catch (err) {
+    console.error(err)
+    showToast('Failed to remove template', 'error')
   }
 }
 
@@ -537,6 +671,9 @@ const openCreate = () => {
   selectedTemplate.value = null
   previewGrid.value = []
   workbookRef.value = null
+  pendingDocxFile.value = null
+  newDocxName.value = ''
+  addTemplateType.value = null
 
   activeModule.value = null
   editorMode.value = 'create'
@@ -556,6 +693,7 @@ const openCreate = () => {
     templateStartRow: 8,
     templateRowsPerPage: 9,
     templateMappings: [],
+    templates: [],
   }
 }
 
@@ -565,6 +703,9 @@ const openEdit = (m) => {
   selectedTemplate.value = null
   previewGrid.value = []
   workbookRef.value = null
+  pendingDocxFile.value = null
+  newDocxName.value = ''
+  addTemplateType.value = null
 
   let parsedColumns = m.columns
   if (typeof parsedColumns === 'string') parsedColumns = JSON.parse(parsedColumns)
@@ -592,12 +733,14 @@ const openEdit = (m) => {
     templateMappings: m.templateMappings
       ? (typeof m.templateMappings === 'string' ? JSON.parse(m.templateMappings) : m.templateMappings)
       : [],
+    templates: m.templates || [],
   }
 }
 
 const closeEditor = () => {
   editorMode.value = null
   activeModule.value = null
+  addTemplateType.value = null
 }
 
 /* ================= COLUMNS ================= */
@@ -669,7 +812,7 @@ const formatColumns = (columns) =>
       : []
   }))
 
-/* ================= TEMPLATE FILE SELECTION ================= */
+/* ================= TEMPLATE FILE SELECTION (legacy Excel) ================= */
 const onTemplateSelected = (event) => {
   const file = event.target.files[0]
   if (!file) { selectedTemplate.value = null; previewGrid.value = []; return }
@@ -720,6 +863,8 @@ const createModule = async () => {
       )
     }
 
+    await uploadPendingDocxTemplate(res.data.id)
+
     await loadModules()
     selectedTemplate.value = null
     closeEditor()
@@ -756,6 +901,8 @@ const updateModule = async () => {
         { headers: { 'Content-Type': 'multipart/form-data' } },
       )
     }
+
+    await uploadPendingDocxTemplate(editModule.value.id)
 
     await loadModules()
     selectedTemplate.value = null
@@ -1377,6 +1524,39 @@ const cancelDelete = () => {
 .action-btn.edit:hover   { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
 .action-btn.danger:hover { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
 
+/* ===== TEMPLATE ADD/EDIT CHOOSER ===== */
+.template-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 10px;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: #fafafa;
+}
+.template-row-icon { font-size: 13px; flex-shrink: 0; }
+
+.template-choice-btn {
+  width: auto;
+  flex: 1;
+  padding: 10px 14px;
+}
+
+.template-add-panel {
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fafafa;
+}
+
+.template-add-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
   /* Leave room for hamburger */
@@ -1475,6 +1655,11 @@ const cancelDelete = () => {
     right: 0;
     min-width: unset;
     width: 100%;
+  }
+
+  /* Template chooser buttons stack */
+  .template-choice-btn + .template-choice-btn {
+    margin-left: 0;
   }
 
   /* Placeholder shorter on mobile */

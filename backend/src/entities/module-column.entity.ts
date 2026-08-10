@@ -23,13 +23,12 @@ export class ModuleColumn {
   @Column({ default: false })
   required!: boolean
 
-  @Column({
-    name: 'options_raw',
-    type: 'longtext',
-    nullable: true,
-    default: '[]',
-  })
-  optionsRaw!: string
+ @Column({
+  name: 'options_raw',
+  type: 'longtext',
+  nullable: true,
+})
+optionsRaw: string = '[]'
 
   get options(): { label: string; color: string }[] {
     try {

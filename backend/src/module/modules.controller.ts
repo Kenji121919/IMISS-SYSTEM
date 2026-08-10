@@ -50,26 +50,17 @@ export class ModulesController {
     return this.service.delete(Number(id))
   }
 
-  // ================= UPLOAD TEMPLATE =================
+  // ================= UPLOAD TEMPLATE (legacy single-Excel-template flow) =================
   @Post(':id/template')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
         destination: './uploads/templates',
-
         filename: (req, file, callback) => {
-          const unique =
-            Date.now() +
-            '-' +
-            Math.round(Math.random() * 1000000)
-
-          callback(
-            null,
-            unique + extname(file.originalname),
-          )
+          const unique = Date.now() + '-' + Math.round(Math.random() * 1000000)
+          callback(null, unique + extname(file.originalname))
         },
       }),
-
       fileFilter(req, file, callback) {
         if (
           file.originalname.endsWith('.xlsx') ||
@@ -94,7 +85,7 @@ export class ModulesController {
     )
   }
 
-  // ================= FETCH TEMPLATE (for re-mapping / fill) =================
+  // ================= FETCH TEMPLATE (legacy, re-mapping / fill) =================
   @Get(':id/template')
   async getTemplate(@Param('id') id: number, @Res() res: Response) {
     const module: any = await this.service.findOne(Number(id))
@@ -116,5 +107,59 @@ export class ModulesController {
       `inline; filename="${module.templateFileName || module.templateFile}"`
     )
     return res.sendFile(filePath)
+  }
+
+  // ================= LIST TEMPLATES FOR A MODULE =================
+  @Get(':id/templates')
+  listTemplates(@Param('id') id: number) {
+    return this.service.listTemplates(Number(id))
+  }
+
+  // ================= UPLOAD A NEW TEMPLATE (excel or docx) =================
+  @Post(':id/templates')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads/templates',
+        filename: (req, file, callback) => {
+          const unique = Date.now() + '-' + Math.round(Math.random() * 1000000)
+          callback(null, unique + extname(file.originalname))
+        },
+      }),
+      fileFilter(req, file, callback) {
+        const okExcel = file.originalname.endsWith('.xlsx') || file.originalname.endsWith('.xls')
+        const okDocx  = file.originalname.endsWith('.docx')
+        if (okExcel || okDocx) callback(null, true)
+        else callback(new Error('Only .xlsx, .xls, or .docx files are allowed.'), false)
+      },
+    }),
+  )
+  uploadNewTemplate(
+    @Param('id') id: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('name') name: string,
+    @Body('kind') kind: 'excel' | 'docx',
+  ) {
+    return this.service.saveNewTemplate(Number(id), name, kind, file)
+  }
+
+  // ================= FETCH A SPECIFIC TEMPLATE FILE =================
+  @Get('templates/:templateId/file')
+  async getTemplateFile(@Param('templateId') templateId: number, @Res() res: Response) {
+    const tpl = await this.service.getTemplateById(Number(templateId))
+    if (!tpl) throw new NotFoundException('Template not found')
+
+    const filePath = join(process.cwd(), 'uploads', 'templates', tpl.file)
+    if (!existsSync(filePath)) throw new NotFoundException('Template file missing on disk')
+
+    res.setHeader('Content-Type', tpl.fileMime || 'application/octet-stream')
+    res.setHeader('Content-Disposition', `inline; filename="${tpl.fileName || tpl.file}"`)
+    return res.sendFile(filePath)
+  }
+
+  // ================= DELETE A TEMPLATE =================
+  @Delete('templates/:templateId')
+  deleteTemplate(@Param('templateId') templateId: number) {
+    return this.service.deleteTemplate(Number(templateId))
   }
 }

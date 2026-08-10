@@ -3,12 +3,16 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { Module } from '../entities/module.entity'
 import { ModuleColumn } from '../entities/module-column.entity'
+import { ModuleTemplate, TemplateKind } from '../entities/module-template.entity'
 
 @Injectable()
 export class ModulesService {
   constructor(
     @InjectRepository(Module)
     private repo: Repository<Module>,
+
+    @InjectRepository(ModuleTemplate)
+    private templateRepo: Repository<ModuleTemplate>,
 
     @InjectRepository(ModuleColumn)
     private colRepo: Repository<ModuleColumn>
@@ -24,8 +28,6 @@ export class ModulesService {
       templateRowsPerPage: body.templateRowsPerPage ?? 9,
     })
 
-    // templateMappings is a getter/setter, not a plain @Column,
-    // so it must be assigned directly on the entity instance to trigger the setter.
     module.templateMappings = body.templateMappings ?? []
 
     const saved = await this.repo.save(module)
@@ -50,7 +52,7 @@ export class ModulesService {
   async findAll(userId: number) {
     const mods = await this.repo.find({
       where: { userId },
-      relations: ['columns'],
+      relations: ['columns', 'templates'],
     })
     return mods.map(m => ({
       ...m,
@@ -73,7 +75,7 @@ export class ModulesService {
   async findOne(id: number) {
     const mod = await this.repo.findOne({
       where: { id },
-      relations: ['columns'],
+      relations: ['columns', 'templates'],
     })
     if (!mod) return null
     return {
@@ -119,8 +121,6 @@ export class ModulesService {
 
     if (newColumns.length) await this.colRepo.save(newColumns)
 
-    // Same rule as create(): assign via the entity instance so the
-    // templateMappings setter (-> templateMappingsRaw) actually fires.
     module.name               = body.name
     module.allowedProfilesRaw = JSON.stringify((body.allowedProfiles || []).map(Number))
     module.templateStartRow    = body.templateStartRow ?? 8
@@ -137,7 +137,7 @@ export class ModulesService {
     return this.repo.delete(id)
   }
 
-  // ================= SAVE TEMPLATE =================
+  // ================= SAVE TEMPLATE (legacy single-Excel-template flow) =================
   async saveTemplate(
     id: number,
     filename: string,
@@ -161,5 +161,43 @@ export class ModulesService {
       filename,
       originalName,
     }
+  }
+
+  // ================= MULTI-TEMPLATE SUPPORT (docx / additional templates) =================
+  async listTemplates(moduleId: number) {
+    return this.templateRepo.find({ where: { moduleId } })
+  }
+
+  async saveNewTemplate(
+    moduleId: number,
+    name: string,
+    kind: TemplateKind,
+    file: Express.Multer.File,
+  ) {
+    const tpl = this.templateRepo.create({
+      moduleId,
+      name,
+      kind,
+      file: file.filename,
+      fileName: file.originalname,
+      fileMime: file.mimetype,
+      mappings: [],
+    })
+    return this.templateRepo.save(tpl)
+  }
+
+  async getTemplateById(templateId: number) {
+    return this.templateRepo.findOne({ where: { id: templateId } })
+  }
+
+  async updateTemplateMappings(templateId: number, mappings: any[]) {
+    const tpl = await this.templateRepo.findOne({ where: { id: templateId } })
+    if (!tpl) return null
+    tpl.mappings = mappings
+    return this.templateRepo.save(tpl)
+  }
+
+  async deleteTemplate(templateId: number) {
+    return this.templateRepo.delete(templateId)
   }
 }

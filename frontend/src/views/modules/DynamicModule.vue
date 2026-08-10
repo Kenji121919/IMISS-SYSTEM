@@ -213,6 +213,18 @@
 
               </td>
               <td class="td-actions no-print">
+                <button
+                  v-if="docxTemplate"
+                  class="action-btn"
+                  @click="fillAndPrint(log)"
+                  title="Fill & Print form"
+                  :disabled="filling"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+                    <path d="M4 2h6l3 3v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+                    <path d="M6 9h4M6 11.5h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                  </svg>
+                </button>
                 <button class="action-btn edit" @click="openEdit(log)" title="Edit">
                   <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
                     <path d="M11 2l3 3-8 8H3v-3l8-8z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
@@ -359,6 +371,9 @@
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/api/axios'
+import PizZip from 'pizzip'
+import Docxtemplater from 'docxtemplater'
+import { saveAs } from 'file-saver'
 
 const route = useRoute()
 
@@ -376,6 +391,7 @@ const searchQuery = ref('')
 const activeFilters = ref({})
 const dateFilters   = ref({})
 const saving        = ref(false)
+const filling       = ref(false)
 
 /* ================= SEEN TRACKING ================= */
 // Timestamp recorded when this module was last opened.
@@ -455,6 +471,53 @@ const getOptionStyle = (col, value) => {
     background: color + '22',
     color:      color,
     border:     `1px solid ${color}55`,
+  }
+}
+
+/* ================= DOCX FILL & PRINT ================= */
+// The module can have zero or more templates; we use the first docx one found.
+const docxTemplate = computed(() =>
+  (module.value?.templates || []).find(t => t.kind === 'docx')
+)
+
+// Must match the tag-sanitizing rule used in ManageModules.vue when showing tag hints.
+const toTag = (name) => name.replace(/[^a-zA-Z0-9]/g, '')
+
+const fillAndPrint = async (log) => {
+  if (!docxTemplate.value) return
+  filling.value = true
+  try {
+    const res = await api.get(`/modules/templates/${docxTemplate.value.id}/file`, {
+      responseType: 'arraybuffer',
+    })
+
+    const zip = new PizZip(res.data)
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+    })
+
+    const data = {}
+    columns.value.forEach(col => {
+      const val = getValue(log, col.name)
+      data[toTag(col.name)] = val === '-' ? '' : val
+    })
+
+    doc.render(data)
+
+    const out = doc.getZip().generate({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    })
+
+    const safeName = (docxTemplate.value.name || 'Form').replace(/[^a-zA-Z0-9-_ ]/g, '')
+    saveAs(out, `${safeName}-${log.id}.docx`)
+    showToast('Form generated', 'success')
+  } catch (err) {
+    console.error(err)
+    showToast('Failed to generate form', 'error')
+  } finally {
+    filling.value = false
   }
 }
 
@@ -1025,6 +1088,7 @@ watch(() => route.params.id, async (newId, oldId) => {
 .action-btn:hover        { background: #f3f4f6; color: #374151; border-color: #e5e7eb; }
 .action-btn.edit:hover   { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
 .action-btn.danger:hover { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+.action-btn:disabled     { opacity: 0.4; cursor: not-allowed; }
 
 /* ===== EMPTY / PLACEHOLDER ===== */
 .empty-row td { text-align: center; padding: 40px 0; }

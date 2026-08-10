@@ -7,6 +7,7 @@ import {
 
 import { ModuleColumn } from './module-column.entity'
 import { Log } from './log.entity'
+import { ModuleTemplate } from './module-template.entity'
 
 
 @Entity()
@@ -20,8 +21,11 @@ export class Module {
   @Column()
   userId!: number
 
-  @Column({ type: 'longtext', nullable: true, default: '[]' })
-  allowedProfilesRaw!: string
+  @Column({
+    type: 'longtext',
+    nullable: true,
+  })
+  allowedProfilesRaw: string = '[]'
 
   @OneToMany(() => ModuleColumn, col => col.module, {
     cascade: true,
@@ -31,6 +35,12 @@ export class Module {
 
   @OneToMany(() => Log, log => log.module)
   logs!: Log[]
+
+  @OneToMany(() => ModuleTemplate, t => t.module, {
+    cascade: true,
+    eager: true
+  })
+  templates!: ModuleTemplate[]
 
   @Column({
     type: 'longtext',
