@@ -9,9 +9,9 @@ import { ModuleColumn } from './module-column.entity'
 import { Log } from './log.entity'
 import { ModuleTemplate } from './module-template.entity'
 
-
 @Entity()
 export class Module {
+
   @PrimaryGeneratedColumn()
   id!: number
 
@@ -27,8 +27,19 @@ export class Module {
   })
   allowedProfilesRaw: string = '[]'
 
+  @Column({
+    type: 'longtext',
+    nullable: true,
+  })
+  monitoringConfigRaw: string = '{}'
+
+  @Column({
+    type: 'longtext',
+    nullable: true,
+  })
+  upcomingConfigRaw: string = '{}'
+
   @OneToMany(() => ModuleColumn, col => col.module, {
-    cascade: true,
     eager: true
   })
   columns!: ModuleColumn[]
@@ -58,8 +69,14 @@ export class Module {
   })
   templateFileMime!: string
 
-  @Column({ type: 'json', nullable: true })
-  templateMappings!: { column: string; cell: string }[]
+  @Column({
+    type: 'json',
+    nullable: true
+  })
+  templateMappings!: {
+    column: string
+    cell: string
+  }[]
 
   @Column({
     default: 8
@@ -70,5 +87,4 @@ export class Module {
     default: 9
   })
   templateRowsPerPage!: number
-
 }
