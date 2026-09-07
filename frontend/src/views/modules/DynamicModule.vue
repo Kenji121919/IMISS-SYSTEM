@@ -54,6 +54,67 @@
           </span>
         </button>
 
+        <button
+          v-for="tpl in batchPdfTemplates"
+          :key="'batch-pdf-' + tpl.id"
+          class="btn-outline batch-print-top-btn"
+          @click="generateBatchPdf(tpl)"
+          :disabled="batchPdfGenerating"
+          :title="'Generate ' + tpl.name + ' from current filtered records'"
+        >
+          <span class="btn-icon-left">📕</span>
+          {{
+            batchPdfGenerating
+              ? 'Generating…'
+              : tpl.name
+          }}
+          <span
+            v-if="filteredLogs.length"
+            class="batch-count-badge"
+          >
+            {{ filteredLogs.length }}
+          </span>
+        </button>
+
+        <button
+          v-for="tpl in batchDocxTemplates"
+          :key="'batch-docx-' + tpl.id"
+          class="btn-outline batch-print-top-btn"
+          @click="generateBatchDocx(tpl)"
+          :disabled="batchDocxGenerating"
+          :title="'Generate ' + tpl.name + ' from current filtered records'"
+        >
+          <span class="btn-icon-left">📄</span>
+          {{
+            batchDocxGenerating
+              ? 'Generating…'
+              : tpl.name
+          }}
+          <span
+            v-if="filteredLogs.length"
+            class="batch-count-badge"
+          >
+            {{ filteredLogs.length }}
+          </span>
+        </button>
+
+        <button
+          v-if="hasBatchExcelTemplate"
+          class="btn-outline batch-print-top-btn"
+          @click="generateBatchExcel"
+          :disabled="batchGenerating"
+          title="Generate batch Excel form from the currently filtered records"
+        >
+          <span class="btn-icon-left">📄</span>
+          {{ batchGenerating ? 'Generating…' : 'Batch form' }}
+          <span
+            v-if="filteredLogs.length"
+            class="batch-count-badge"
+          >
+            {{ filteredLogs.length }}
+          </span>
+        </button>
+
         <button class="btn-outline" @click="printLogs" title="Print logs">
 
           <span class="btn-icon-left">🖨</span> Print
@@ -744,18 +805,19 @@
 
 
 
-    <!-- ================= PREVIEW BODY ================= -->
+    <!-- ================= REAL PDF PREVIEW BODY ================= -->
 
-    <div class="docx-preview-body">
+    <div class="docx-preview-body real-pdf-preview-body">
+      <iframe
+        v-if="docxPreviewPdfUrl"
+        :src="docxPreviewPdfUrl"
+        class="real-document-frame"
+        title="DOCX PDF preview"
+      ></iframe>
 
-      <div
-
-        ref="docxPreviewContainer"
-
-        class="docx-render-container"
-
-      ></div>
-
+      <div v-else class="real-preview-loading">
+        Generating preview…
+      </div>
     </div>
 
 
@@ -836,6 +898,81 @@
 
   
 
+
+    <!-- ================= BATCH EXCEL PRINT PREVIEW ================= -->
+    <div
+      v-if="showBatchPreview"
+      class="batch-preview-backdrop"
+      @click.self="closeBatchPreview"
+    >
+      <div class="batch-preview-modal">
+        <div class="batch-preview-header">
+          <div>
+            <h3>Batch Form Preview</h3>
+            <p>
+              {{ batchPreviewPages.length }} page(s) ·
+              {{ batchPreviewRecordCount }} record(s)
+            </p>
+          </div>
+
+          <button
+            type="button"
+            class="batch-preview-close"
+            @click="closeBatchPreview"
+            title="Close preview"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div class="batch-preview-body real-pdf-preview-body">
+          <iframe
+            v-if="batchPreviewPdfUrl"
+            :src="batchPreviewPdfUrl"
+            class="real-document-frame"
+            title="Batch Excel PDF preview"
+          ></iframe>
+
+          <div v-else class="real-preview-loading">
+            Generating preview…
+          </div>
+        </div>
+
+        <div class="batch-preview-footer">
+          <div class="batch-preview-info">
+            The preview uses the generated batch document. PDF templates preserve the original uploaded page exactly.
+          </div>
+
+          <div class="batch-preview-actions">
+            <button
+              type="button"
+              class="btn-ghost"
+              @click="closeBatchPreview"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              class="btn-outline"
+              @click="downloadBatchFile"
+            >
+              ↓ {{ batchDownloadLabel }}
+            </button>
+
+            <button
+              type="button"
+              class="btn-primary"
+              @click="printBatchPreview"
+            >
+              <span class="btn-icon-left">🖨</span>
+              Print
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ================= MONITORING POPUP ================= -->
     <div
       v-if="showMonitoring"
@@ -874,11 +1011,8 @@
               <thead>
                 <tr>
                   <th>Item</th>
-                  <th>Last borrowed by</th>
-                  <th>Current state</th>
-                  <th>Borrow date</th>
-                  <th>Return date</th>
-                  <th v-if="monitoringConfig?.statusColumn">Status</th>
+                  <th>Current location</th>
+                  <th>Status</th>
                 </tr>
               </thead>
 
@@ -891,31 +1025,21 @@
                     <strong>{{ row.item }}</strong>
                   </td>
 
-                  <td>{{ row.location }}</td>
+                  <td>
+                    <strong>{{ row.currentLocation }}</strong>
+                  </td>
 
                   <td>
                     <span
                       :class="[
                         'monitoring-state',
-                        row.returned
+                        row.available
                           ? 'monitoring-state-returned'
                           : 'monitoring-state-out'
                       ]"
                     >
-                      {{
-                        row.returned
-                          ? 'Returned'
-                          : ('With ' + row.location)
-                      }}
+                      {{ row.available ? 'Available' : 'Borrowed' }}
                     </span>
-                  </td>
-
-                  <td>{{ formatMonitoringDate(row.borrowDate) }}</td>
-
-                  <td>{{ formatMonitoringDate(row.returnDate) }}</td>
-
-                  <td v-if="monitoringConfig?.statusColumn">
-                    {{ row.status || '-' }}
                   </td>
                 </tr>
               </tbody>
@@ -925,8 +1049,9 @@
 
         <div class="monitoring-modal-footer">
           <span>
-            Latest record is shown for each
-            {{ monitoringConfig?.itemColumn || 'item' }}.
+            Monitoring shows where each
+            {{ monitoringConfig?.itemColumn || 'item' }}
+            is currently located. The default location is IMISS.
           </span>
 
           <button
@@ -953,7 +1078,7 @@
               {{
                 upcomingItems.length
                   ? upcomingItems.length + ' upcoming item(s)'
-                  : 'No upcoming items in the reminder window'
+                  : 'No future scheduled items'
               }}
             </p>
           </div>
@@ -968,7 +1093,7 @@
             <div class="upcoming-empty-icon">⏰</div>
             <strong>No upcoming alerts</strong>
             <span>
-              Alerts appear here once a record enters the configured reminder window.
+              Future scheduled records appear here. The automatic alarm still follows the configured reminder time.
             </span>
           </div>
 
@@ -1074,6 +1199,8 @@ import { saveAs } from 'file-saver'
 
 import { renderAsync } from 'docx-preview'
 
+import ExcelJS from 'exceljs'
+
 const route = useRoute()
 
 const module    = ref(null)
@@ -1113,6 +1240,164 @@ const docxPreviewContainer = ref(null)
 const generatedDocxBlob = ref(null)
 
 const generatedDocxName = ref('')
+const docxPreviewPdfUrl = ref('')
+
+/* ================= BATCH EXCEL PRINT STATE ================= */
+
+const batchGenerating = ref(false)
+
+const batchDocxGenerating = ref(false)
+const batchPdfGenerating = ref(false)
+
+const batchDownloadBlob = ref(null)
+const batchDownloadFileName = ref('')
+const batchDownloadLabel = ref('Download')
+
+const showBatchPreview = ref(false)
+const batchPreviewPages = ref([])
+const batchPreviewRecordCount = ref(0)
+const batchPreviewDate = ref('')
+const batchExcelBlob = ref(null)
+const batchExcelFileName = ref('')
+const batchExcelPages = ref([])
+const batchPreviewPdfUrl = ref('')
+
+const batchPreviewDescriptionColumn = computed(() => {
+  const names = (columns.value || []).map(c => c.name)
+  return (
+    names.find(n => /item\s*description/i.test(n)) ||
+    names.find(n => /description/i.test(n)) ||
+    ''
+  )
+})
+
+const batchPreviewSerialColumn = computed(() => {
+  const names = (columns.value || []).map(c => c.name)
+  return (
+    names.find(n => /serial\s*(number|no\.?)/i.test(n)) ||
+    names.find(n => /^serial$/i.test(n)) ||
+    ''
+  )
+})
+
+const batchPreviewValue = (record, columnName) => {
+  if (!columnName) return ''
+  const value = record?.data?.[columnName]
+  return value === null || value === undefined || value === ''
+    ? '-'
+    : value
+}
+
+const batchPreviewEmptyRows = (page) => {
+  const perPage = Math.max(
+    1,
+    Number(module.value?.templateRowsPerPage) || 1
+  )
+  return Math.max(0, perPage - (page?.length || 0))
+}
+
+const closeBatchPreview = () => {
+  showBatchPreview.value = false
+  revokePreviewUrl(batchPreviewPdfUrl.value)
+  batchPreviewPdfUrl.value = ''
+}
+
+const downloadBatchFile = async () => {
+  if (
+    batchDownloadBlob.value &&
+    batchDownloadFileName.value
+  ) {
+    saveAs(
+      batchDownloadBlob.value,
+      batchDownloadFileName.value
+    )
+    return
+  }
+
+  /*
+   * Excel multi-page fallback:
+   * preserve existing exact-page ZIP behavior.
+   */
+  if (!batchExcelPages.value.length) return
+
+  if (batchExcelPages.value.length === 1) {
+    const page =
+      batchExcelPages.value[0]
+
+    saveAs(
+      page.blob,
+      page.fileName
+    )
+
+    return
+  }
+
+  const zip =
+    new PizZip()
+
+  for (const page of batchExcelPages.value) {
+    const bytes =
+      await page.blob.arrayBuffer()
+
+    zip.file(
+      page.fileName,
+      bytes
+    )
+  }
+
+  const zipBlob =
+    zip.generate({
+      type: 'blob'
+    })
+
+  const cleanModule =
+    String(
+      module.value?.name ||
+      'Batch_Form'
+    ).replace(
+      /[^a-zA-Z0-9_-]+/g,
+      '_'
+    )
+
+  saveAs(
+    zipBlob,
+    `${cleanModule}_Excel_Pages_${new Date()
+      .toISOString()
+      .slice(0, 10)}.zip`
+  )
+}
+
+const printBatchPreview = () => {
+  if (!batchPreviewPdfUrl.value) {
+    showToast('PDF preview is not ready yet', 'error')
+    return
+  }
+
+  const frame = document.querySelector(
+    '.batch-preview-body .real-document-frame'
+  )
+
+  try {
+    frame?.contentWindow?.focus()
+    frame?.contentWindow?.print()
+  } catch {
+    const win = window.open(batchPreviewPdfUrl.value, '_blank')
+    if (!win) {
+      showToast('Please allow pop-ups to print the document', 'error')
+    }
+  }
+}
+
+
+/*
+ * The existing module-level Excel template is the batch/filtered form.
+ * DOCX templates remain per-row Fill & Print templates.
+ */
+const hasBatchExcelTemplate = computed(() =>
+  !!module.value?.templateFile
+)
+
+
 
 /* ================= UPCOMING ALERT STATE ================= */
 
@@ -1178,52 +1463,118 @@ const monitoringRows = computed(() => {
 
   if (!cfg?.enabled || !cfg.itemColumn) return []
 
-  const latest = new Map()
+  /*
+   * MONITORING RULES
+   * ---------------------------------------------------------
+   * 1. Every tracked router/item is at IMISS by default.
+   * 2. Future borrow records do NOT move the router yet.
+   * 3. A router moves to the borrowing department only when
+   *    its Borrow Date has already started.
+   * 4. Once its Return Date has passed, it is back at IMISS.
+   * 5. Future borrow records remain available to the existing
+   *    Upcoming Alert logic; Monitoring only answers:
+   *    "Where is the router right now?"
+   */
 
+  const now = Date.now()
+  const grouped = new Map()
+
+  // Group every log by tracked item so even an item with only a
+  // future booking can still appear as "IMISS / Available".
   for (const log of logs.value || []) {
     const itemRaw = log?.data?.[cfg.itemColumn]
     const item = String(itemRaw ?? '').trim()
 
     if (!item) continue
 
-    const borrowDate = cfg.borrowDateColumn
-      ? log?.data?.[cfg.borrowDateColumn]
-      : ''
+    if (!grouped.has(item)) {
+      grouped.set(item, [])
+    }
 
-    const timestamp =
-      monitoringTimestamp(borrowDate) ||
-      monitoringTimestamp(log?.createdAt) ||
-      Number(log?.id || 0)
+    grouped.get(item).push(log)
+  }
 
-    const previous = latest.get(item)
+  const rows = []
 
-    if (!previous || timestamp >= previous.timestamp) {
+  for (const [item, itemLogs] of grouped.entries()) {
+    let currentLocation = 'IMISS'
+    let available = true
+    let activeRecord = null
+    let activeTimestamp = -1
+
+    for (const log of itemLogs) {
+      const borrowDate = cfg.borrowDateColumn
+        ? log?.data?.[cfg.borrowDateColumn]
+        : ''
+
+      const borrowTimestamp = monitoringTimestamp(borrowDate)
+
+      /*
+       * If there is no usable borrow date, do not let the record
+       * move the router away from IMISS. A future booking also
+       * does not change the current location.
+       */
+      if (!borrowTimestamp || borrowTimestamp > now) {
+        continue
+      }
+
+      /*
+       * Pick the most recent borrow that has already started.
+       */
+      if (borrowTimestamp >= activeTimestamp) {
+        activeTimestamp = borrowTimestamp
+        activeRecord = log
+      }
+    }
+
+    if (activeRecord) {
       const locationRaw = cfg.locationColumn
-        ? log?.data?.[cfg.locationColumn]
+        ? activeRecord?.data?.[cfg.locationColumn]
         : ''
 
       const returnDate = cfg.returnDateColumn
-        ? log?.data?.[cfg.returnDateColumn]
+        ? activeRecord?.data?.[cfg.returnDateColumn]
         : ''
 
-      const statusRaw = cfg.statusColumn
-        ? log?.data?.[cfg.statusColumn]
-        : ''
+      const returnTimestamp = monitoringTimestamp(returnDate)
 
-      latest.set(item, {
-        item,
-        location: String(locationRaw ?? '').trim() || '-',
-        borrowDate: borrowDate || '',
-        returnDate: returnDate || '',
-        status: String(statusRaw ?? '').trim(),
-        returned: !!String(returnDate ?? '').trim(),
-        timestamp
-      })
+      /*
+       * A completed return puts the router back at IMISS.
+       * If Return Date is empty or still in the future, the
+       * router remains with the borrowing department.
+       */
+      const alreadyReturned =
+        !!returnTimestamp &&
+        returnTimestamp <= now
+
+      if (!alreadyReturned) {
+        currentLocation =
+          String(locationRaw ?? '').trim() ||
+          'IMISS'
+
+        available =
+          currentLocation.toUpperCase() === 'IMISS'
+      }
     }
+
+    rows.push({
+      item,
+      currentLocation,
+      available
+    })
   }
 
-  return Array.from(latest.values())
-    .sort((a, b) => a.item.localeCompare(b.item))
+  return rows.sort(
+    (a, b) =>
+      a.item.localeCompare(
+        b.item,
+        undefined,
+        {
+          numeric: true,
+          sensitivity: 'base'
+        }
+      )
+  )
 })
 
 const formatMonitoringDate = (value) => {
@@ -1441,13 +1792,1312 @@ const getOptionStyle = (col, value) => {
 }
 
 
+
+
+/* ================= REAL DOCUMENT PDF PREVIEW ================= */
+
+const convertGeneratedFileToPdf = async (blob, fileName) => {
+  const formData = new FormData()
+  formData.append('file', blob, fileName)
+
+  const res = await api.post(
+    '/modules/preview/pdf',
+    formData,
+    { responseType: 'blob' }
+  )
+
+  return URL.createObjectURL(
+    new Blob([res.data], { type: 'application/pdf' })
+  )
+}
+
+
+const convertGeneratedFilesToPdf = async (files) => {
+  const formData = new FormData()
+
+  for (const file of files) {
+    formData.append(
+      'files',
+      file.blob,
+      file.fileName
+    )
+  }
+
+  const res = await api.post(
+    '/modules/preview/pdf/multiple',
+    formData,
+    {
+      responseType: 'blob'
+    }
+  )
+
+  return URL.createObjectURL(
+    new Blob(
+      [res.data],
+      {
+        type: 'application/pdf'
+      }
+    )
+  )
+}
+
+const revokePreviewUrl = (url) => {
+  if (!url) return
+  try {
+    URL.revokeObjectURL(url)
+  } catch {
+    // Ignore already-revoked URLs
+  }
+}
+
+/* ================= BATCH EXCEL TEMPLATE ================= */
+
+/*
+ * Batch Excel uses the CURRENT FILTERED RECORDS.
+ *
+ * Example:
+ * Department = IMISS
+ * Item Description contains CPU
+ * Status = Done
+ *
+ * Clicking Batch form prints only those matching records.
+ *
+ * The Excel form is repeated into a NEW WORKSHEET when the current
+ * condemnation-letter page is full. Each worksheet is configured to
+ * print as one page, so one generated XLSX can contain Page 1, Page 2,
+ * Page 3, etc.
+ */
+
+const clonePlain = (value) => {
+  if (value === undefined || value === null) return value
+  try {
+    return structuredClone(value)
+  } catch {
+    try {
+      return JSON.parse(JSON.stringify(value))
+    } catch {
+      return value
+    }
+  }
+}
+
+const excelCellParts = (address) => {
+  const match = String(address || '').toUpperCase().match(/^([A-Z]+)(\d+)$/)
+  if (!match) return null
+
+  let col = 0
+  for (const ch of match[1]) {
+    col = col * 26 + (ch.charCodeAt(0) - 64)
+  }
+
+  return {
+    col,
+    row: Number(match[2])
+  }
+}
+
+const excelColumnLetters = (colNumber) => {
+  let n = Number(colNumber)
+  let out = ''
+
+  while (n > 0) {
+    n -= 1
+    out = String.fromCharCode(65 + (n % 26)) + out
+    n = Math.floor(n / 26)
+  }
+
+  return out
+}
+
+const copyExcelCell = (sourceCell, targetCell) => {
+  targetCell.value = clonePlain(sourceCell.value)
+
+  if (sourceCell.style) {
+    targetCell.style = clonePlain(sourceCell.style)
+  }
+
+  if (sourceCell.numFmt) {
+    targetCell.numFmt = sourceCell.numFmt
+  }
+
+  if (sourceCell.font) {
+    targetCell.font = clonePlain(sourceCell.font)
+  }
+
+  if (sourceCell.alignment) {
+    targetCell.alignment = clonePlain(sourceCell.alignment)
+  }
+
+  if (sourceCell.border) {
+    targetCell.border = clonePlain(sourceCell.border)
+  }
+
+  if (sourceCell.fill) {
+    targetCell.fill = clonePlain(sourceCell.fill)
+  }
+
+  if (sourceCell.protection) {
+    targetCell.protection = clonePlain(sourceCell.protection)
+  }
+}
+
+const copyExcelRow = (
+  sourceSheet,
+  targetSheet,
+  sourceRowNumber,
+  targetRowNumber
+) => {
+  const sourceRow = sourceSheet.getRow(sourceRowNumber)
+  const targetRow = targetSheet.getRow(targetRowNumber)
+
+  targetRow.height = sourceRow.height
+  targetRow.hidden = sourceRow.hidden
+  targetRow.outlineLevel = sourceRow.outlineLevel
+
+  sourceRow.eachCell(
+    { includeEmpty: true },
+    (sourceCell, colNumber) => {
+      const targetCell = targetRow.getCell(colNumber)
+      copyExcelCell(sourceCell, targetCell)
+    }
+  )
+}
+
+const copyWorksheetTemplate = (
+  sourceWorkbook,
+  sourceSheet,
+  outputWorkbook,
+  targetSheet
+) => {
+  // Column widths / visibility.
+  sourceSheet.columns.forEach((sourceColumn, index) => {
+    const targetColumn = targetSheet.getColumn(index + 1)
+    targetColumn.width = sourceColumn.width
+    targetColumn.hidden = sourceColumn.hidden
+    targetColumn.outlineLevel = sourceColumn.outlineLevel
+  })
+
+  // Full used range.
+  const maxRow =
+    sourceSheet.actualRowCount ||
+    sourceSheet.rowCount ||
+    1
+
+  for (let row = 1; row <= maxRow; row++) {
+    copyExcelRow(
+      sourceSheet,
+      targetSheet,
+      row,
+      row
+    )
+  }
+
+  // Merged cells.
+  const merges =
+    sourceSheet?.model?.merges ||
+    []
+
+  for (const merge of merges) {
+    try {
+      targetSheet.mergeCells(merge)
+    } catch {
+      // Ignore duplicate/unsupported merge definitions.
+    }
+  }
+
+  // Page/print settings.
+  targetSheet.pageSetup = clonePlain(
+    sourceSheet.pageSetup || {}
+  )
+
+  targetSheet.pageMargins = clonePlain(
+    sourceSheet.pageMargins || {}
+  )
+
+  targetSheet.headerFooter = clonePlain(
+    sourceSheet.headerFooter || {}
+  )
+
+  targetSheet.properties = {
+    ...(targetSheet.properties || {}),
+    ...(clonePlain(sourceSheet.properties || {}))
+  }
+
+  targetSheet.views = clonePlain(
+    sourceSheet.views || []
+  )
+
+  // Copy images such as the hospital logo.
+  const sourceImages =
+    typeof sourceSheet.getImages === 'function'
+      ? sourceSheet.getImages()
+      : []
+
+  for (const image of sourceImages) {
+    try {
+      const imageInfo =
+        sourceWorkbook.getImage(image.imageId)
+
+      if (!imageInfo) continue
+
+      const imageId =
+        outputWorkbook.addImage({
+          base64: imageInfo.base64,
+          buffer: imageInfo.buffer,
+          extension:
+            imageInfo.extension ||
+            'png'
+        })
+
+      targetSheet.addImage(
+        imageId,
+        clonePlain(image.range)
+      )
+    } catch (err) {
+      console.warn(
+        'Could not copy Excel image:',
+        err
+      )
+    }
+  }
+}
+
+const inferBatchRowsPerRecord = (
+  mappings,
+  startRow
+) => {
+  const mappedRows =
+    (mappings || [])
+      .map(m => excelCellParts(m.cell))
+      .filter(Boolean)
+      .map(p => p.row)
+      .filter(row => row >= startRow)
+
+  if (!mappedRows.length) {
+    return 1
+  }
+
+  return Math.max(
+    1,
+    Math.max(...mappedRows) -
+      Math.min(...mappedRows) +
+      1
+  )
+}
+
+const getTemplatePrefix = (cellValue) => {
+  if (typeof cellValue !== 'string') {
+    return ''
+  }
+
+  const trimmed = cellValue.trim()
+
+  /*
+   * Preserve labels such as:
+   *   SN:
+   *   Serial No:
+   *
+   * But ordinary sample text in the template is replaced.
+   */
+  if (
+    trimmed.endsWith(':') &&
+    trimmed.length <= 30
+  ) {
+    return trimmed + ' '
+  }
+
+  return ''
+}
+
+const writeBatchMappedValue = (
+  sourceSheet,
+  targetSheet,
+  mapping,
+  record,
+  recordIndex,
+  startRow,
+  rowsPerRecord
+) => {
+  const parts =
+    excelCellParts(mapping.cell)
+
+  if (!parts) return
+
+  const rowOffset =
+    parts.row - startRow
+
+  const targetRow =
+    startRow +
+    recordIndex * rowsPerRecord +
+    rowOffset
+
+  const targetAddress =
+    `${excelColumnLetters(parts.col)}${targetRow}`
+
+  const templateCell =
+    sourceSheet.getCell(mapping.cell)
+
+  const targetCell =
+    targetSheet.getCell(targetAddress)
+
+  const value =
+    record?.data?.[mapping.column] ??
+    ''
+
+  const prefix =
+    getTemplatePrefix(templateCell.value)
+
+  targetCell.value =
+    `${prefix}${value ?? ''}`.trim()
+}
+
+const clearBatchMappedSlots = (
+  sourceSheet,
+  targetSheet,
+  mappings,
+  startRow,
+  rowsPerRecord,
+  recordsPerPage,
+  usedRecords
+) => {
+  for (
+    let recordIndex = usedRecords;
+    recordIndex < recordsPerPage;
+    recordIndex++
+  ) {
+    for (const mapping of mappings || []) {
+      const parts =
+        excelCellParts(mapping.cell)
+
+      if (!parts) continue
+
+      const rowOffset =
+        parts.row - startRow
+
+      if (rowOffset < 0) continue
+
+      const targetRow =
+        startRow +
+        recordIndex * rowsPerRecord +
+        rowOffset
+
+      const targetAddress =
+        `${excelColumnLetters(parts.col)}${targetRow}`
+
+      const sourceValue =
+        sourceSheet
+          .getCell(mapping.cell)
+          .value
+
+      const prefix =
+        getTemplatePrefix(sourceValue)
+
+      targetSheet
+        .getCell(targetAddress)
+        .value = prefix.trim()
+    }
+  }
+}
+
+
+/*
+ * ================= EXACT BATCH TEMPLATE HELPERS =================
+ *
+ * IMPORTANT:
+ * We DO NOT rebuild the uploaded Excel sheet anymore.
+ *
+ * Every printable page starts from a fresh copy of the ORIGINAL XLSX.
+ * We only replace cell values inside its existing formatted table.
+ *
+ * This preserves:
+ * - logo / drawings
+ * - merged cells
+ * - borders
+ * - column widths
+ * - row heights
+ * - fonts
+ * - page margins
+ * - print area / scaling
+ * - footer / signatures
+ */
+
+const hasExcelCellValue = (value) => {
+  return !(
+    value === null ||
+    value === undefined ||
+    value === ''
+  )
+}
+
+const snapshotBatchBaseBlock = (
+  sheet,
+  startRow,
+  rowsPerRecord
+) => {
+  const maxCol =
+    Math.max(
+      1,
+      sheet.columnCount || 18
+    )
+
+  const cells = []
+
+  for (
+    let rowOffset = 0;
+    rowOffset < rowsPerRecord;
+    rowOffset++
+  ) {
+    const sourceRow =
+      startRow + rowOffset
+
+    for (
+      let col = 1;
+      col <= maxCol;
+      col++
+    ) {
+      const value =
+        sheet
+          .getRow(sourceRow)
+          .getCell(col)
+          .value
+
+      if (
+        hasExcelCellValue(value)
+      ) {
+        cells.push({
+          rowOffset,
+          col,
+          value: clonePlain(value)
+        })
+      }
+    }
+  }
+
+  return cells
+}
+
+const clearBatchTemplateSlots = (
+  sheet,
+  mappings,
+  baseStaticCells,
+  startRow,
+  rowsPerRecord,
+  recordsPerPage
+) => {
+  /*
+   * Clear only VALUES.
+   * Never touch formatting, merges or dimensions.
+   */
+  for (
+    let recordIndex = 0;
+    recordIndex < recordsPerPage;
+    recordIndex++
+  ) {
+    const recordBaseRow =
+      startRow +
+      recordIndex *
+      rowsPerRecord
+
+    /*
+     * Clear the template's fixed first-record values
+     * (e.g. 1, unit, SN:) from every available slot.
+     */
+    for (
+      const cell
+      of baseStaticCells
+    ) {
+      sheet
+        .getRow(
+          recordBaseRow +
+          cell.rowOffset
+        )
+        .getCell(
+          cell.col
+        )
+        .value = null
+    }
+
+    /*
+     * Clear every configured mapped cell in the slot.
+     */
+    for (
+      const mapping
+      of mappings
+    ) {
+      const parts =
+        excelCellParts(
+          mapping.cell
+        )
+
+      if (!parts) continue
+
+      const rowOffset =
+        parts.row -
+        startRow
+
+      if (
+        rowOffset < 0 ||
+        rowOffset >= rowsPerRecord
+      ) {
+        continue
+      }
+
+      sheet
+        .getRow(
+          recordBaseRow +
+          rowOffset
+        )
+        .getCell(
+          parts.col
+        )
+        .value = null
+    }
+  }
+}
+
+const fillExactBatchPage = (
+  sheet,
+  mappings,
+  records,
+  startRow,
+  rowsPerRecord,
+  recordsPerPage,
+  baseStaticCells
+) => {
+  clearBatchTemplateSlots(
+    sheet,
+    mappings,
+    baseStaticCells,
+    startRow,
+    rowsPerRecord,
+    recordsPerPage
+  )
+
+  records.forEach(
+    (
+      record,
+      recordIndex
+    ) => {
+      const recordBaseRow =
+        startRow +
+        recordIndex *
+        rowsPerRecord
+
+      /*
+       * Restore fixed template values into this used slot.
+       *
+       * Example:
+       * row 16 → QTY=1, UNIT=unit
+       * row 17 → SN:
+       */
+      for (
+        const cell
+        of baseStaticCells
+      ) {
+        sheet
+          .getRow(
+            recordBaseRow +
+            cell.rowOffset
+          )
+          .getCell(
+            cell.col
+          )
+          .value =
+            clonePlain(
+              cell.value
+            )
+      }
+
+      /*
+       * Fill configured log mappings.
+       */
+      for (
+        const mapping
+        of mappings
+      ) {
+        const parts =
+          excelCellParts(
+            mapping.cell
+          )
+
+        if (!parts) continue
+
+        const rowOffset =
+          parts.row -
+          startRow
+
+        if (
+          rowOffset < 0 ||
+          rowOffset >= rowsPerRecord
+        ) {
+          continue
+        }
+
+        const targetCell =
+          sheet
+            .getRow(
+              recordBaseRow +
+              rowOffset
+            )
+            .getCell(
+              parts.col
+            )
+
+        const value =
+          record?.data?.[
+            mapping.column
+          ] ?? ''
+
+        /*
+         * Preserve short labels already present in the
+         * actual template such as "SN:".
+         */
+        const sourceTemplateValue =
+          baseStaticCells.find(
+            c =>
+              c.rowOffset ===
+                rowOffset &&
+              c.col ===
+                parts.col
+          )?.value
+
+        const prefix =
+          getTemplatePrefix(
+            sourceTemplateValue
+          )
+
+        targetCell.value =
+          prefix
+            ? `${prefix}${value ?? ''}`
+            : value
+      }
+    }
+  )
+}
+
+const generateBatchExcel = async () => {
+  if (!hasBatchExcelTemplate.value) {
+    showToast(
+      'No batch Excel template is configured',
+      'error'
+    )
+    return
+  }
+
+  const records =
+    [...filteredLogs.value]
+
+  if (!records.length) {
+    showToast(
+      'No filtered records to print',
+      'error'
+    )
+    return
+  }
+
+  const mappings =
+    Array.isArray(
+      module.value?.templateMappings
+    )
+      ? module.value.templateMappings
+      : []
+
+  if (!mappings.length) {
+    showToast(
+      'Configure the Excel cell mappings first',
+      'error'
+    )
+    return
+  }
+
+  batchGenerating.value = true
+
+  try {
+    /*
+     * Download the ORIGINAL Excel template once.
+     */
+    const res =
+      await api.get(
+        `/modules/${route.params.id}/template`,
+        {
+          responseType:
+            'arraybuffer'
+        }
+      )
+
+    const templateBytes =
+      res.data
+
+    /*
+     * Read one temporary copy only to determine
+     * the first-sheet configuration and record block.
+     */
+    const inspectWorkbook =
+      new ExcelJS.Workbook()
+
+    await inspectWorkbook.xlsx.load(
+      templateBytes.slice(0)
+    )
+
+    const inspectSheet =
+      inspectWorkbook.worksheets[0]
+
+    if (!inspectSheet) {
+      throw new Error(
+        'Excel template has no worksheet'
+      )
+    }
+
+    const startRow =
+      Math.max(
+        1,
+        Number(
+          module.value
+            ?.templateStartRow
+        ) || 1
+      )
+
+    const recordsPerPage =
+      Math.max(
+        1,
+        Number(
+          module.value
+            ?.templateRowsPerPage
+        ) || 1
+      )
+
+    const rowsPerRecord =
+      Math.max(
+        1,
+        Number(
+          module.value
+            ?.templateRowsPerRecord
+        ) ||
+        inferBatchRowsPerRecord(
+          mappings,
+          startRow
+        )
+      )
+
+    /*
+     * Capture the fixed content of ONE template record
+     * before anything is cleared.
+     *
+     * For the condemnation form this includes:
+     * 1 / unit / SN:
+     */
+    const baseStaticCells =
+      snapshotBatchBaseBlock(
+        inspectSheet,
+        startRow,
+        rowsPerRecord
+      )
+
+    /*
+     * Split currently-filtered logs into printable pages.
+     */
+    const chunks = []
+
+    for (
+      let index = 0;
+      index < records.length;
+      index += recordsPerPage
+    ) {
+      chunks.push(
+        records.slice(
+          index,
+          index +
+            recordsPerPage
+        )
+      )
+    }
+
+    const pageFiles = []
+
+    /*
+     * CRITICAL FIX:
+     * Start EVERY page from a fresh copy of the
+     * ORIGINAL uploaded Excel workbook.
+     *
+     * We no longer copy/reconstruct worksheets.
+     */
+    for (
+      let pageIndex = 0;
+      pageIndex < chunks.length;
+      pageIndex++
+    ) {
+      const pageRecords =
+        chunks[pageIndex]
+
+      const pageWorkbook =
+        new ExcelJS.Workbook()
+
+      await pageWorkbook.xlsx.load(
+        templateBytes.slice(0)
+      )
+
+      const pageSheet =
+        pageWorkbook.worksheets[0]
+
+      if (!pageSheet) {
+        throw new Error(
+          `Excel page ${
+            pageIndex + 1
+          } has no worksheet`
+        )
+      }
+
+      fillExactBatchPage(
+        pageSheet,
+        mappings,
+        pageRecords,
+        startRow,
+        rowsPerRecord,
+        recordsPerPage,
+        baseStaticCells
+      )
+
+      /*
+       * DO NOT override pageSetup.
+       * The original uploaded Excel print settings remain intact.
+       */
+      const pageBuffer =
+        await pageWorkbook
+          .xlsx
+          .writeBuffer()
+
+      const cleanName =
+        String(
+          module.value
+            ?.templateFileName ||
+          module.value
+            ?.templateFile ||
+          'Batch_Form'
+        )
+          .replace(
+            /\.(xlsx|xls)$/i,
+            ''
+          )
+          .replace(
+            /[^a-zA-Z0-9_-]+/g,
+            '_'
+          )
+
+      const suffix =
+        chunks.length === 1
+          ? ''
+          : `_Page_${pageIndex + 1}`
+
+      const pageFileName =
+        `${cleanName}${suffix}_${new Date()
+          .toISOString()
+          .slice(0, 10)}.xlsx`
+
+      const pageBlob =
+        new Blob(
+          [pageBuffer],
+          {
+            type:
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          }
+        )
+
+      pageFiles.push({
+        blob:
+          pageBlob,
+
+        fileName:
+          pageFileName
+      })
+    }
+
+    batchDownloadBlob.value = null
+    batchDownloadFileName.value = ''
+    batchDownloadLabel.value = 'Download Excel'
+
+    batchExcelPages.value =
+      pageFiles
+
+    /*
+     * Keep backward-compatible single-file refs.
+     */
+    batchExcelBlob.value =
+      pageFiles[0]?.blob ||
+      null
+
+    batchExcelFileName.value =
+      pageFiles[0]?.fileName ||
+      ''
+
+    batchPreviewPages.value =
+      chunks
+
+    batchPreviewRecordCount.value =
+      records.length
+
+    batchPreviewDate.value =
+      new Date()
+        .toLocaleDateString(
+          'en-PH',
+          {
+            year:
+              'numeric',
+            month:
+              '2-digit',
+            day:
+              '2-digit'
+          }
+        )
+
+    /*
+     * Convert all exact Excel pages separately
+     * then merge their PDFs on the backend.
+     */
+    revokePreviewUrl(
+      batchPreviewPdfUrl.value
+    )
+
+    batchPreviewPdfUrl.value =
+      await convertGeneratedFilesToPdf(
+        pageFiles
+      )
+
+    showBatchPreview.value =
+      true
+
+    showToast(
+      `Preview ready: ${records.length} record(s) across ${chunks.length} page(s)`,
+      'success'
+    )
+  } catch (err) {
+    console.error(
+      'Batch Excel generation failed:',
+      err
+    )
+
+    showToast(
+      'Failed to generate batch Excel form',
+      'error'
+    )
+  } finally {
+    batchGenerating.value =
+      false
+  }
+}
+
+
+
+
+/* ================= BATCH PDF ================= */
+
+const generateBatchPdf = async (
+  template
+) => {
+  const records =
+    [...filteredLogs.value]
+
+  if (!records.length) {
+    showToast(
+      'No filtered records to print',
+      'error'
+    )
+    return
+  }
+
+  batchPdfGenerating.value =
+    true
+
+  try {
+    const res =
+      await api.post(
+        `/modules/templates/${template.id}/batch-pdf`,
+        {
+          records:
+            records.map(log => ({
+              id:
+                log.id,
+
+              data:
+                log.data || {}
+            }))
+        },
+        {
+          responseType:
+            'blob'
+        }
+      )
+
+    const pdfBlob =
+      new Blob(
+        [res.data],
+        {
+          type:
+            'application/pdf'
+        }
+      )
+
+    revokePreviewUrl(
+      batchPreviewPdfUrl.value
+    )
+
+    batchPreviewPdfUrl.value =
+      URL.createObjectURL(
+        pdfBlob
+      )
+
+    const cleanName =
+      String(
+        template.name ||
+        'Batch_Form'
+      ).replace(
+        /[^a-zA-Z0-9_-]+/g,
+        '_'
+      )
+
+    batchDownloadBlob.value =
+      pdfBlob
+
+    batchDownloadFileName.value =
+      `${cleanName}_${new Date()
+        .toISOString()
+        .slice(0, 10)}.pdf`
+
+    batchDownloadLabel.value =
+      'Download PDF'
+
+    batchPreviewRecordCount.value =
+      records.length
+
+    const recordsPerPage =
+      Math.max(
+        1,
+        Number(
+          template
+            ?.batchConfig
+            ?.recordsPerPage
+        ) || 9
+      )
+
+    batchPreviewPages.value =
+      Array.from(
+        {
+          length:
+            Math.ceil(
+              records.length /
+              recordsPerPage
+            )
+        },
+        (_, index) =>
+          records.slice(
+            index *
+              recordsPerPage,
+            (index + 1) *
+              recordsPerPage
+          )
+      )
+
+    showBatchPreview.value =
+      true
+
+    showToast(
+      `PDF preview ready: ${records.length} record(s)`,
+      'success'
+    )
+  } catch (err) {
+    console.error(
+      'Batch PDF generation failed:',
+      err
+    )
+
+    showToast(
+      'Failed to generate batch PDF',
+      'error'
+    )
+  } finally {
+    batchPdfGenerating.value =
+      false
+  }
+}
+
+
+/* ================= BATCH DOCX ================= */
+
+const buildBatchDocxItem = (log) => {
+  const item = {}
+
+  for (const col of columns.value || []) {
+    item[
+      toTag(
+        col.name
+      )
+    ] =
+      log?.data?.[
+        col.name
+      ] ?? ''
+  }
+
+  item.LogId =
+    log.id
+
+  return item
+}
+
+const generateBatchDocx = async (
+  template
+) => {
+  const records =
+    [...filteredLogs.value]
+
+  if (!records.length) {
+    showToast(
+      'No filtered records to print',
+      'error'
+    )
+    return
+  }
+
+  batchDocxGenerating.value =
+    true
+
+  try {
+    const res =
+      await api.get(
+        `/modules/templates/${template.id}/file`,
+        {
+          responseType:
+            'arraybuffer'
+        }
+      )
+
+    const zip =
+      new PizZip(
+        res.data
+      )
+
+    const doc =
+      new Docxtemplater(
+        zip,
+        {
+          paragraphLoop:
+            true,
+
+          linebreaks:
+            true,
+        }
+      )
+
+    const loopName =
+      template
+        ?.batchConfig
+        ?.loopName ||
+      'items'
+
+    const payload = {
+      [loopName]:
+        records.map(
+          buildBatchDocxItem
+        ),
+
+      ModuleName:
+        module.value?.name ||
+        '',
+
+      PrintDate:
+        new Date()
+          .toLocaleDateString(
+            'en-PH'
+          ),
+    }
+
+    doc.render(
+      payload
+    )
+
+    const out =
+      doc
+        .getZip()
+        .generate({
+          type: 'blob',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        })
+
+    const cleanName =
+      String(
+        template.name ||
+        'Batch_Form'
+      ).replace(
+        /[^a-zA-Z0-9_-]+/g,
+        '_'
+      )
+
+    generatedDocxBlob.value =
+      out
+
+    generatedDocxName.value =
+      `${cleanName}_${new Date()
+        .toISOString()
+        .slice(0, 10)}.docx`
+
+    revokePreviewUrl(
+      docxPreviewPdfUrl.value
+    )
+
+    docxPreviewPdfUrl.value =
+      await convertGeneratedFileToPdf(
+        out,
+        generatedDocxName.value
+      )
+
+    showDocxPreview.value =
+      true
+
+    showToast(
+      `Generated ${records.length} filtered record(s)`,
+      'success'
+    )
+  } catch (err) {
+    console.error(
+      'Batch DOCX generation failed:',
+      err
+    )
+
+    showToast(
+      'Failed to generate batch Word form. Check the loop tags in the template.',
+      'error'
+    )
+  } finally {
+    batchDocxGenerating.value =
+      false
+  }
+}
+
+
 /* ================= DOCX TEMPLATE DETECTION ================= */
 
 // Use the first DOCX template attached to this module.
 // Case-insensitive so "DOCX", "Docx", and "docx" all work.
 const docxTemplate = computed(() =>
   (module.value?.templates || []).find(
-    t => String(t.kind || '').toLowerCase() === 'docx'
+    t =>
+      String(t.kind || '').toLowerCase() === 'docx' &&
+      String(t.printMode || 'row').toLowerCase() !== 'batch'
+  )
+)
+
+const batchDocxTemplates = computed(() =>
+  (module.value?.templates || []).filter(
+    t =>
+      String(t.kind || '').toLowerCase() === 'docx' &&
+      String(t.printMode || 'row').toLowerCase() === 'batch'
+  )
+)
+
+const batchPdfTemplates = computed(() =>
+  (module.value?.templates || []).filter(
+    t =>
+      String(t.kind || '').toLowerCase() === 'pdf' &&
+      String(t.printMode || 'batch').toLowerCase() === 'batch'
   )
 )
 
@@ -1554,66 +3204,22 @@ const fillAndPrint = async (log) => {
       `${safeName}-${log.id}.docx`
 
     /* -----------------------------------------
+       6. CONVERT ACTUAL FILLED DOCX TO PDF
+    ----------------------------------------- */
 
-       6. OPEN PREVIEW MODAL
+    revokePreviewUrl(docxPreviewPdfUrl.value)
 
+    docxPreviewPdfUrl.value =
+      await convertGeneratedFileToPdf(
+        out,
+        generatedDocxName.value
+      )
+
+    /* -----------------------------------------
+       7. OPEN REAL PDF PREVIEW
     ----------------------------------------- */
 
     showDocxPreview.value = true
-
-    await nextTick()
-
-    /* -----------------------------------------
-
-       7. CLEAR OLD PREVIEW
-
-    ----------------------------------------- */
-
-    if (docxPreviewContainer.value) {
-
-      docxPreviewContainer.value.innerHTML = ''
-
-    }
-
-    /* -----------------------------------------
-
-       8. RENDER DOCX
-
-    ----------------------------------------- */
-
-    await renderAsync(
-
-      out,
-
-      docxPreviewContainer.value,
-
-      docxPreviewContainer.value,
-
-      {
-
-        className: 'docx',
-
-        inWrapper: true,
-
-        breakPages: true,
-
-        ignoreWidth: false,
-
-        ignoreHeight: false,
-
-        ignoreFonts: false,
-
-        renderHeaders: true,
-
-        renderFooters: true,
-
-        renderFootnotes: true,
-
-        useBase64URL: true
-
-      }
-
-    )
 
   } catch (err) {
 
@@ -1658,19 +3264,16 @@ const downloadFilledDocx = () => {
 /* ================= CLOSE DOCX PREVIEW ================= */
 
 const closeDocxPreview = () => {
-
   showDocxPreview.value = false
-
   generatedDocxBlob.value = null
-
   generatedDocxName.value = ''
 
+  revokePreviewUrl(docxPreviewPdfUrl.value)
+  docxPreviewPdfUrl.value = ''
+
   if (docxPreviewContainer.value) {
-
     docxPreviewContainer.value.innerHTML = ''
-
   }
-
 }
 
 
@@ -1678,159 +3281,24 @@ const closeDocxPreview = () => {
 /* ================= PRINT DOCX PREVIEW ================= */
 
 const printFilledDocx = () => {
-
-  const container = docxPreviewContainer.value
-
-  if (!container) return
-
-  const printWindow = window.open(
-
-    '',
-
-    '_blank',
-
-    'width=1000,height=800'
-
-  )
-
-  if (!printWindow) {
-
-    showToast(
-
-      'Please allow pop-ups to print the document',
-
-      'error'
-
-    )
-
+  if (!docxPreviewPdfUrl.value) {
+    showToast('PDF preview is not ready yet', 'error')
     return
-
   }
 
-  /*
-
-   * Copy styles generated by docx-preview.
-
-   */
-
-  const styles = Array.from(
-
-    document.querySelectorAll('style')
-
+  const frame = document.querySelector(
+    '.docx-preview-body .real-document-frame'
   )
 
-    .map(style => style.outerHTML)
-
-    .join('\n')
-
-  printWindow.document.write(`
-
-    <!DOCTYPE html>
-
-    <html>
-
-      <head>
-
-        <meta charset="UTF-8">
-
-        <title>
-
-          ${generatedDocxName.value || 'Document'}
-
-        </title>
-
-        ${styles}
-
-        <style>
-
-          html,
-
-          body {
-
-            margin: 0;
-
-            padding: 0;
-
-            background: white !important;
-
-          }
-
-          body {
-
-            display: block !important;
-
-          }
-
-          .docx-wrapper {
-
-            background: white !important;
-
-            padding: 0 !important;
-
-          }
-
-          .docx-wrapper > section.docx {
-
-            margin: 0 auto !important;
-
-            box-shadow: none !important;
-
-          }
-
-          @media print {
-
-            body {
-
-              background: white !important;
-
-            }
-
-            .docx-wrapper {
-
-              background: white !important;
-
-              padding: 0 !important;
-
-            }
-
-            .docx-wrapper > section.docx {
-
-              box-shadow: none !important;
-
-              margin: 0 auto !important;
-
-            }
-
-          }
-
-        </style>
-
-      </head>
-
-      <body>
-
-        ${container.innerHTML}
-
-      </body>
-
-    </html>
-
-  `)
-
-  printWindow.document.close()
-
-  printWindow.focus()
-
-  printWindow.onload = () => {
-
-    setTimeout(() => {
-
-      printWindow.print()
-
-    }, 300)
-
+  try {
+    frame?.contentWindow?.focus()
+    frame?.contentWindow?.print()
+  } catch {
+    const win = window.open(docxPreviewPdfUrl.value, '_blank')
+    if (!win) {
+      showToast('Please allow pop-ups to print the document', 'error')
+    }
   }
-
 }
 
 
@@ -1891,13 +3359,19 @@ const parseUpcomingDateTime = (log) => {
   return isNaN(fallback.getTime()) ? null : fallback
 }
 
+/*
+ * UPCOMING LIST
+ * ---------------------------------------------------------
+ * Show ALL future scheduled items in the Upcoming popup.
+ * The configured lead time is used only for the automatic
+ * reminder/alarm below.
+ */
 const upcomingItems = computed(() => {
   const cfg = upcomingConfig.value
 
   if (!cfg.enabled || !cfg.dateColumn) return []
 
   const now = Date.now()
-  const leadMs = upcomingLeadMinutes.value * 60 * 1000
 
   return logs.value
     .map(log => {
@@ -1908,7 +3382,8 @@ const upcomingItems = computed(() => {
       const eventMs = eventDate.getTime()
       const msRemaining = eventMs - now
 
-      if (msRemaining < 0 || msRemaining > leadMs) {
+      // Upcoming list = every event that has not started yet.
+      if (msRemaining < 0) {
         return null
       }
 
@@ -1937,6 +3412,30 @@ const upcomingItems = computed(() => {
     })
     .filter(Boolean)
     .sort((a, b) => a.eventMs - b.eventMs)
+})
+
+/*
+ * ALARM LIST
+ * ---------------------------------------------------------
+ * Only items already inside the configured reminder window
+ * are eligible to trigger the automatic popup/browser alert.
+ *
+ * Example:
+ * Event: 5:00 PM
+ * Lead:  1 hour
+ * Alarm becomes eligible at 4:00 PM.
+ */
+const upcomingAlarmItems = computed(() => {
+  const leadMs =
+    upcomingLeadMinutes.value *
+    60 *
+    1000
+
+  return upcomingItems.value.filter(
+    item =>
+      item.msRemaining >= 0 &&
+      item.msRemaining <= leadMs
+  )
 })
 
 const formatUpcomingDate = (date) => {
@@ -2044,7 +3543,7 @@ const checkUpcomingAlerts = () => {
     return
   }
 
-  const nextAlert = upcomingItems.value.find(
+  const nextAlert = upcomingAlarmItems.value.find(
     item => !dismissedUpcomingKeys.value.has(item.key)
   )
 
@@ -3854,6 +5353,372 @@ watch(() => route.params.id, async (newId, oldId) => {
   .monitoring-modal-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+
+
+/* ================= BATCH EXCEL BUTTON ================= */
+
+.batch-print-top-btn {
+  position: relative;
+}
+
+.batch-count-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  margin-left: 5px;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+
+
+/* ================= BATCH PRINT PREVIEW ================= */
+
+.batch-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12500;
+  background: rgba(15, 23, 42, 0.68);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+}
+
+.batch-preview-modal {
+  width: min(1240px, 97vw);
+  height: min(92vh, 980px);
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 28px 90px rgba(15, 23, 42, 0.42);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.batch-preview-header {
+  flex: 0 0 auto;
+  padding: 15px 18px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.batch-preview-header h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 17px;
+}
+
+.batch-preview-header p {
+  margin: 3px 0 0;
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.batch-preview-close {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.batch-preview-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 26px;
+  background: #e9edf3;
+}
+
+.batch-preview-page {
+  position: relative;
+  width: min(1040px, 100%);
+  margin: 0 auto 28px;
+  padding: 28px;
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.17);
+  border-radius: 4px;
+}
+
+.batch-preview-page:last-child {
+  margin-bottom: 0;
+}
+
+.batch-preview-page-label {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  color: #9ca3af;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.condemn-letter {
+  color: #111827;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.condemn-letter-head {
+  display: grid;
+  grid-template-columns: 110px 1fr 150px;
+  gap: 14px;
+  align-items: start;
+}
+
+.condemn-logo-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.condemn-logo-placeholder {
+  width: 74px;
+  height: 74px;
+  border: 2px solid #7c5a12;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7c5a12;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.condemn-head-copy {
+  text-align: center;
+}
+
+.condemn-title {
+  margin-top: 3px;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.condemn-small {
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.condemn-date-box {
+  text-align: center;
+  color: #374151;
+  font-size: 11px;
+}
+
+.condemn-date-box strong {
+  display: block;
+  margin-top: 6px;
+  color: #111827;
+}
+
+.condemn-to {
+  margin-top: 18px;
+  font-size: 12px;
+}
+
+.condemn-cert-text {
+  margin: 8px 0 12px;
+  color: #1f2937;
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: justify;
+}
+
+.condemn-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 10.5px;
+}
+
+.condemn-preview-table th,
+.condemn-preview-table td {
+  border: 1px solid #111827;
+  padding: 5px 6px;
+  vertical-align: top;
+}
+
+.condemn-preview-table th {
+  background: #ffffff;
+  text-align: center;
+  font-weight: 800;
+}
+
+.condemn-preview-table .qty {
+  width: 42px;
+}
+
+.condemn-preview-table .unit {
+  width: 52px;
+}
+
+.condemn-preview-table .small-col {
+  width: 90px;
+}
+
+.desc-cell {
+  min-height: 34px;
+}
+
+.serial-line {
+  margin-top: 3px;
+}
+
+.empty-template-row td {
+  height: 28px;
+}
+
+.condemn-footer-copy {
+  margin-top: 14px;
+  font-size: 10.5px;
+  color: #1f2937;
+}
+
+.request-blank {
+  display: inline-block;
+  min-width: 240px;
+  border-bottom: 1px solid #111827;
+}
+
+.condemn-signatures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 100px;
+  margin-top: 20px;
+}
+
+.signature-line {
+  width: 230px;
+  border-bottom: 1px solid #111827;
+  margin-top: 26px;
+}
+
+.signature-caption {
+  width: 230px;
+  margin-top: 4px;
+  text-align: center;
+  line-height: 1.35;
+}
+
+.batch-preview-footer {
+  flex: 0 0 auto;
+  padding: 12px 18px;
+  border-top: 1px solid #e5e7eb;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.batch-preview-info {
+  max-width: 620px;
+  color: #6b7280;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.batch-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 800px) {
+  .batch-preview-backdrop {
+    padding: 0;
+  }
+
+  .batch-preview-modal {
+    width: 100vw;
+    height: 100vh;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  .batch-preview-body {
+    padding: 14px;
+  }
+
+  .batch-preview-page {
+    padding: 18px;
+  }
+
+  .condemn-letter-head {
+    grid-template-columns: 80px 1fr;
+  }
+
+  .condemn-date-box {
+    grid-column: 1 / -1;
+  }
+
+  .batch-preview-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .batch-preview-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+}
+
+
+
+/* ================= REAL PDF DOCUMENT PREVIEW ================= */
+
+.real-pdf-preview-body {
+  padding: 14px !important;
+  background: #dfe4ea !important;
+}
+
+.real-document-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 620px;
+  border: 0;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.16);
+}
+
+.real-preview-loading {
+  min-height: 620px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 13px;
+  background: #ffffff;
+  border-radius: 6px;
+}
+
+.docx-preview-modal .real-pdf-preview-body,
+.batch-preview-modal .real-pdf-preview-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (max-width: 800px) {
+  .real-document-frame,
+  .real-preview-loading {
+    min-height: 75vh;
   }
 }
 

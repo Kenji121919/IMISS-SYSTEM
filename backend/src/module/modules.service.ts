@@ -7,6 +7,7 @@ import { ModuleColumn } from '../entities/module-column.entity'
 import {
   ModuleTemplate,
   TemplateKind,
+  TemplatePrintMode,
 } from '../entities/module-template.entity'
 
 
@@ -187,6 +188,10 @@ export class ModulesService {
         templateRowsPerPage:
           body.templateRowsPerPage ??
           9,
+
+        templateRowsPerRecord:
+          body.templateRowsPerRecord ??
+          1,
 
         /*
          * NEW:
@@ -558,6 +563,12 @@ export class ModulesService {
       9
 
 
+    module.templateRowsPerRecord =
+      body.templateRowsPerRecord ??
+      module.templateRowsPerRecord ??
+      1
+
+
     if (body.templateMappings !== undefined) {
       module.templateMappings =
         body.templateMappings
@@ -827,6 +838,10 @@ export class ModulesService {
 
     file: Express.Multer.File,
 
+    printMode: TemplatePrintMode = 'row',
+
+    batchConfig: any = null,
+
   ) {
 
     const tpl =
@@ -837,6 +852,14 @@ export class ModulesService {
         name,
 
         kind,
+
+        printMode:
+          printMode === 'batch'
+            ? 'batch'
+            : 'row',
+
+        batchConfig:
+          batchConfig || null,
 
         file:
           file.filename,
@@ -905,6 +928,112 @@ export class ModulesService {
     return this.templateRepo.save(
       tpl,
     )
+
+  }
+
+
+  async updateTemplateConfig(
+
+    templateId: number,
+
+    body: {
+      name?: string
+      printMode?: TemplatePrintMode
+      batchConfig?: any
+    },
+
+  ) {
+
+    const tpl =
+      await this.templateRepo.findOne({
+        where: {
+          id: templateId,
+        },
+      })
+
+
+    if (!tpl) {
+      return null
+    }
+
+
+    if (body.name !== undefined) {
+      tpl.name =
+        String(
+          body.name
+        ).trim() ||
+        tpl.name
+    }
+
+
+    if (body.printMode !== undefined) {
+      tpl.printMode =
+        body.printMode === 'batch'
+          ? 'batch'
+          : 'row'
+    }
+
+
+    if (body.batchConfig !== undefined) {
+      tpl.batchConfig =
+        body.batchConfig || null
+    }
+
+
+    return this.templateRepo.save(
+      tpl,
+    )
+
+  }
+
+
+  /* =========================================================
+     DELETE LEGACY / BATCH EXCEL TEMPLATE
+  ========================================================= */
+
+  async deleteLegacyTemplate(
+    id: number,
+  ) {
+
+    const module =
+      await this.repo.findOne({
+        where: {
+          id,
+        },
+      })
+
+
+    if (!module) {
+      return {
+        success: false,
+        message: 'Module not found',
+      }
+    }
+
+
+    module.templateFile =
+      null as any
+
+    module.templateFileName =
+      null as any
+
+    module.templateFileMime =
+      null as any
+
+    module.templateMappings =
+      []
+
+
+    await this.repo.save(
+      module,
+    )
+
+
+    return {
+      success: true,
+      message:
+        'Excel template removed successfully',
+    }
 
   }
 
