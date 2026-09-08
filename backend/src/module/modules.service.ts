@@ -944,7 +944,7 @@ export class ModulesService {
 
   ) {
 
-    const tpl =
+    const existing =
       await this.templateRepo.findOne({
         where: {
           id: templateId,
@@ -952,37 +952,117 @@ export class ModulesService {
       })
 
 
-    if (!tpl) {
+    if (!existing) {
       return null
     }
 
 
-    if (body.name !== undefined) {
-      tpl.name =
+    /*
+     * Force the config into a plain JSON object before sending it
+     * to TypeORM/MySQL. This prevents Vue/Proxy-shaped payloads or
+     * nested reactive objects from being retained only in memory.
+     */
+    let normalizedBatchConfig =
+      existing.batchConfig
+
+
+    if (
+      body.batchConfig !==
+      undefined
+    ) {
+
+      try {
+
+        normalizedBatchConfig =
+          body.batchConfig === null
+            ? null
+            : JSON.parse(
+                JSON.stringify(
+                  body.batchConfig
+                )
+              )
+
+      } catch {
+
+        normalizedBatchConfig =
+          null
+
+      }
+
+    }
+
+
+    const patch: any = {}
+
+
+    if (
+      body.name !==
+      undefined
+    ) {
+
+      patch.name =
         String(
           body.name
         ).trim() ||
-        tpl.name
+        existing.name
+
     }
 
 
-    if (body.printMode !== undefined) {
-      tpl.printMode =
-        body.printMode === 'batch'
+    if (
+      body.printMode !==
+      undefined
+    ) {
+
+      patch.printMode =
+        body.printMode ===
+        'batch'
           ? 'batch'
           : 'row'
+
     }
 
 
-    if (body.batchConfig !== undefined) {
-      tpl.batchConfig =
-        body.batchConfig || null
+    if (
+      body.batchConfig !==
+      undefined
+    ) {
+
+      patch.batchConfig =
+        normalizedBatchConfig
+
     }
 
 
-    return this.templateRepo.save(
-      tpl,
-    )
+    /*
+     * IMPORTANT:
+     * Use Repository.update() instead of relying on change detection
+     * from save(existing). This sends a direct SQL UPDATE for the JSON
+     * column every time the mapping is saved.
+     */
+    if (
+      Object.keys(
+        patch
+      ).length
+    ) {
+
+      await this.templateRepo.update(
+        templateId,
+        patch,
+      )
+
+    }
+
+
+    /*
+     * Read it back from MySQL immediately. The frontend receives the
+     * exact persisted value, not the object that was in memory.
+     */
+    return this.templateRepo.findOne({
+      where: {
+        id: templateId,
+      },
+    })
 
   }
 

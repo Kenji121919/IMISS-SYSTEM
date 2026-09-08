@@ -1790,8 +1790,36 @@ export class ModulesController {
   }
 
 
+  @Get('templates/:templateId/config')
+  async getTemplateConfig(
+    @Param('templateId')
+    templateId: number,
+  ) {
+
+    const tpl =
+      await this.service.getTemplateById(
+        Number(
+          templateId,
+        ),
+      )
+
+
+    if (!tpl) {
+
+      throw new NotFoundException(
+        'Template not found',
+      )
+
+    }
+
+
+    return tpl
+
+  }
+
+
   @Put('templates/:templateId/config')
-  updateTemplateConfig(
+  async updateTemplateConfig(
     @Param('templateId')
     templateId: number,
 
@@ -1807,13 +1835,26 @@ export class ModulesController {
     },
   ) {
 
-    return this.service
-      .updateTemplateConfig(
-        Number(
-          templateId,
-        ),
-        body,
+    const updated =
+      await this.service
+        .updateTemplateConfig(
+          Number(
+            templateId,
+          ),
+          body,
+        )
+
+
+    if (!updated) {
+
+      throw new NotFoundException(
+        'Template not found',
       )
+
+    }
+
+
+    return updated
 
   }
 

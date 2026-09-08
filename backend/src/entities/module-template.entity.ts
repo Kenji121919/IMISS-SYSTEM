@@ -17,9 +17,67 @@ export type TemplatePrintMode =
   | 'row'
   | 'batch'
 
+export interface PdfTemplatePoint {
+  x: number
+  y: number
+}
+
+export interface PdfTemplateField {
+  id?: string
+
+  sourceType:
+    | 'column'
+    | 'fixed'
+    | 'printDate'
+
+  column?: string
+  fixedValue?: string
+  prefix?: string
+
+  fontSize?: number
+  width?: number
+  height?: number
+
+  align?:
+    | 'left'
+    | 'center'
+    | 'right'
+
+  repeatPerRecord?: boolean
+
+  boxMode?:
+    | 'topLeft'
+    | 'baseline'
+
+  x: number
+  y: number
+}
+
 export interface TemplateBatchConfig {
   source?: 'filtered'
+
+  /*
+   * DOCX batch
+   */
   loopName?: string
+
+  /*
+   * PDF batch / visual mapper
+   */
+  recordsPerPage?: number
+  recordGapY?: number
+  templatePage?: number
+
+  firstAnchor?:
+    PdfTemplatePoint |
+    null
+
+  secondAnchor?:
+    PdfTemplatePoint |
+    null
+
+  fields?:
+    PdfTemplateField[]
 }
 
 @Entity()

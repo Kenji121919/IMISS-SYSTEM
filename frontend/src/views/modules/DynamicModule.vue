@@ -479,7 +479,7 @@
 
                   class="action-btn"
 
-                  @click="fillAndPrint(log)"
+                  @click.stop="fillAndPrint(log)"
 
                   title="Fill & Print form"
 
@@ -1232,6 +1232,8 @@ const dateFilters   = ref({})
 const saving        = ref(false)
 
 const filling       = ref(false)
+
+let docxPreviewRequestId = 0
 
 const showDocxPreview = ref(false)
 
@@ -3111,137 +3113,269 @@ const fillAndPrint = async (log) => {
 
   if (!docxTemplate.value) return
 
+  /*
+   * Snapshot the CLICKED row immediately.
+   *
+   * Do not keep reading the reactive `log` object after async work starts.
+   * This guarantees that clicking row 1 prints row 1, and clicking row 2
+   * prints row 2 even if the table re-renders, sorts, filters, or paginates.
+   */
+  const selectedLogId =
+    log?.id
+
+  let selectedLogData = {}
+
+  try {
+    selectedLogData =
+      typeof structuredClone === 'function'
+        ? structuredClone(
+            log?.data || {}
+          )
+        : JSON.parse(
+            JSON.stringify(
+              log?.data || {}
+            )
+          )
+  } catch {
+    selectedLogData = {
+      ...(log?.data || {})
+    }
+  }
+
+  /*
+   * Every click gets its own request id.
+   * If an older conversion finishes after a newer click, it is ignored.
+   */
+  const requestId =
+    ++docxPreviewRequestId
+
   filling.value = true
+
+  /*
+   * Close the previous preview first so the user can never mistake
+   * an old document for the newly clicked row.
+   */
+  showDocxPreview.value = false
+
+  revokePreviewUrl(
+    docxPreviewPdfUrl.value
+  )
+
+  docxPreviewPdfUrl.value = ''
+
+  generatedDocxBlob.value = null
+  generatedDocxName.value = ''
 
   try {
 
     /* -----------------------------------------
-
        1. DOWNLOAD ORIGINAL DOCX TEMPLATE
-
     ----------------------------------------- */
 
     const res = await api.get(
-
       `/modules/templates/${docxTemplate.value.id}/file`,
-
       {
-
         responseType: 'arraybuffer'
-
       }
-
     )
 
+    /*
+     * Another row may have been clicked while the template was loading.
+     */
+    if (
+      requestId !==
+      docxPreviewRequestId
+    ) {
+      return
+    }
+
     /* -----------------------------------------
-
        2. LOAD TEMPLATE
-
     ----------------------------------------- */
 
-    const zip = new PizZip(res.data)
+    const zip =
+      new PizZip(
+        res.data
+      )
 
-    const doc = new Docxtemplater(zip, {
-
-      paragraphLoop: true,
-
-      linebreaks: true
-
-    })
+    const doc =
+      new Docxtemplater(
+        zip,
+        {
+          paragraphLoop: true,
+          linebreaks: true
+        }
+      )
 
     /* -----------------------------------------
-
-       3. BUILD TEMPLATE DATA
-
+       3. BUILD DATA FROM THE CLICKED ROW SNAPSHOT
     ----------------------------------------- */
 
     const data = {}
 
-    columns.value.forEach(col => {
+    columns.value.forEach(
+      col => {
 
-      const val = getValue(log, col.name)
+        const value =
+          selectedLogData?.[
+            col.name
+          ]
 
-      data[toTag(col.name)] =
+        data[
+          toTag(
+            col.name
+          )
+        ] =
+          value === null ||
+          value === undefined ||
+          value === '-'
+            ? ''
+            : value
 
-        val === '-' ? '' : val
+      }
+    )
 
-    })
+    /*
+     * Optional template tag if you ever want to use {LogId}.
+     */
+    data.LogId =
+      selectedLogId ?? ''
+
+    console.log(
+      'FILL & PRINT SELECTED ROW:',
+      {
+        id:
+          selectedLogId,
+
+        data:
+          selectedLogData
+      }
+    )
 
     /* -----------------------------------------
-
        4. FILL DOCX TEMPLATE
-
     ----------------------------------------- */
 
-    doc.render(data)
+    doc.render(
+      data
+    )
 
     /* -----------------------------------------
-
        5. GENERATE FILLED DOCX
-
     ----------------------------------------- */
 
-    const out = doc.getZip().generate({
+    const out =
+      doc
+        .getZip()
+        .generate({
+          type: 'blob',
 
-      type: 'blob',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        })
 
-      mimeType:
+    /*
+     * Check again before replacing the preview state.
+     */
+    if (
+      requestId !==
+      docxPreviewRequestId
+    ) {
+      return
+    }
 
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    generatedDocxBlob.value =
+      out
 
-    })
-
-    generatedDocxBlob.value = out
-
-    const safeName = (
-
-      docxTemplate.value.name || 'Form'
-
-    ).replace(/[^a-zA-Z0-9-_ ]/g, '')
+    const safeName =
+      (
+        docxTemplate.value.name ||
+        'Form'
+      ).replace(
+        /[^a-zA-Z0-9-_ ]/g,
+        ''
+      )
 
     generatedDocxName.value =
-
-      `${safeName}-${log.id}.docx`
+      `${safeName}-${selectedLogId ?? 'record'}.docx`
 
     /* -----------------------------------------
-       6. CONVERT ACTUAL FILLED DOCX TO PDF
+       6. CONVERT THIS CLICKED ROW'S DOCX TO PDF
     ----------------------------------------- */
 
-    revokePreviewUrl(docxPreviewPdfUrl.value)
-
-    docxPreviewPdfUrl.value =
+    const previewUrl =
       await convertGeneratedFileToPdf(
         out,
         generatedDocxName.value
       )
 
+    /*
+     * If another row was clicked while LibreOffice/PDF conversion
+     * was running, discard this old preview.
+     */
+    if (
+      requestId !==
+      docxPreviewRequestId
+    ) {
+
+      revokePreviewUrl(
+        previewUrl
+      )
+
+      return
+    }
+
+    docxPreviewPdfUrl.value =
+      previewUrl
+
     /* -----------------------------------------
-       7. OPEN REAL PDF PREVIEW
+       7. OPEN THE CORRECT ROW PREVIEW
     ----------------------------------------- */
 
-    showDocxPreview.value = true
+    showDocxPreview.value =
+      true
+
+    showToast(
+      `Preview opened for record ${selectedLogId ?? ''}`.trim(),
+      'success'
+    )
 
   } catch (err) {
 
-    console.error('DOCX preview error:', err)
+    if (
+      requestId !==
+      docxPreviewRequestId
+    ) {
+      return
+    }
 
-    showToast(
-
-      'Failed to generate document preview',
-
-      'error'
-
+    console.error(
+      'DOCX preview error:',
+      err
     )
 
-    showDocxPreview.value = false
+    showToast(
+      'Failed to generate document preview',
+      'error'
+    )
+
+    showDocxPreview.value =
+      false
 
   } finally {
 
-    filling.value = false
+    if (
+      requestId ===
+      docxPreviewRequestId
+    ) {
+      filling.value =
+        false
+    }
 
   }
 
 }
+
 
 /* ================= DOWNLOAD FILLED DOCX ================= */
 
@@ -5721,5 +5855,8 @@ watch(() => route.params.id, async (newId, oldId) => {
     min-height: 75vh;
   }
 }
+
+
+
 
 </style>

@@ -1188,11 +1188,10 @@
                 </div>
 
                 <p>
-                  Upload any PDF form, select a log column or fixed value,
-                  then click the exact location on the PDF. The system stores
-                  the coordinates automatically. For repeating rows, set the
-                  first and second record anchors once and the vertical spacing
-                  is calculated for you.
+                  Upload any PDF form, place a field once, then drag and resize
+                  the box directly on the PDF until it fits. Use real saved log
+                  values as sample text, zoom in for accuracy, and set Record 1
+                  and Record 2 anchors once so repeating rows are spaced automatically.
                 </p>
               </div>
 
@@ -1491,7 +1490,69 @@
                   </div>
                 </div>
 
-                <!-- ================= PDF PREVIEW ================= -->
+                <!-- ================= PDF PREVIEW / DESIGNER ================= -->
+
+                <div class="pdf-designer-toolbar">
+
+                  <div class="pdf-zoom-group">
+                    <span class="pdf-toolbar-label">Zoom</span>
+
+                    <button
+                      v-for="zoom in [0.75, 1, 1.25, 1.5, 2]"
+                      :key="'pdf-zoom-' + zoom"
+                      type="button"
+                      :class="[
+                        'pdf-zoom-btn',
+                        { active: pdfMapperZoom === zoom }
+                      ]"
+                      @click="setPdfMapperZoom(zoom)"
+                    >
+                      {{ Math.round(zoom * 100) }}%
+                    </button>
+                  </div>
+
+                  <div
+                    v-if="pdfSampleRecords.length"
+                    class="pdf-sample-picker"
+                  >
+                    <label class="pdf-toolbar-label">
+                      Sample data
+                    </label>
+
+                    <select
+                      v-model.number="pdfSampleIndex"
+                      class="form-input"
+                    >
+                      <option
+                        v-for="(record, index) in pdfSampleRecords"
+                        :key="'pdf-sample-' + (record.id || index)"
+                        :value="index"
+                      >
+                        Record {{ record.id || (index + 1) }}
+                      </option>
+                    </select>
+                  </div>
+
+                  <div
+                    v-else-if="pdfSampleLoading"
+                    class="pdf-sample-status"
+                  >
+                    Loading sample log…
+                  </div>
+
+                  <div
+                    v-else
+                    class="pdf-sample-status"
+                  >
+                    No saved log available — field names are used as sample text.
+                  </div>
+
+                  <div class="pdf-designer-hint">
+                    Drag a box to move it · drag the bottom-right handle to resize ·
+                    Arrow keys = 1pt · Shift + Arrow = 5pt · Ctrl + Arrow = 0.25pt
+                  </div>
+
+                </div>
 
                 <div
                   v-if="pdfPreviewLoading"
@@ -1519,24 +1580,76 @@
                       @click="onPdfCanvasClick"
                     ></canvas>
 
-                    <!-- Field markers -->
-                    <div
+                    <!-- Editable field boxes -->
+                    <template
                       v-for="(mapping, index) in pdfBatchConfig.fields"
-                      :key="'pdf-marker-' + mapping.id"
-                      class="pdf-map-box"
-                      :style="pdfMarkerStyle(mapping)"
-                      :title="pdfMappingLabel(mapping)"
+                      :key="'pdf-field-group-' + mapping.id"
                     >
-                      <span class="pdf-map-box-number">{{ index + 1 }}</span>
-                      <span
-                        class="pdf-map-box-text"
-                        :style="{
-                          textAlign: mapping.align || 'left'
-                        }"
+                      <div
+                        :class="[
+                          'pdf-map-box',
+                          {
+                            selected:
+                              selectedPdfMappingId === mapping.id
+                          }
+                        ]"
+                        :style="pdfMarkerStyle(mapping)"
+                        :title="pdfMappingLabel(mapping)"
+                        tabindex="0"
+                        @click.stop="selectPdfMapping(mapping)"
+                        @keydown="onPdfBoxKeydown(mapping, $event)"
+                        @pointerdown.stop="startPdfBoxDrag(mapping, $event)"
+                        @pointermove.stop="movePdfBox(mapping, $event)"
+                        @pointerup.stop="endPdfBoxInteraction(mapping, $event)"
+                        @pointercancel.stop="endPdfBoxInteraction(mapping, $event)"
                       >
-                        {{ pdfMappingPreviewText(mapping) }}
-                      </span>
-                    </div>
+                        <span class="pdf-map-box-number">
+                          {{ index + 1 }}
+                        </span>
+
+                        <span
+                          class="pdf-map-box-text"
+                          :style="{
+                            textAlign: mapping.align || 'left'
+                          }"
+                        >
+                          {{ pdfMappingPreviewText(mapping, 0) }}
+                        </span>
+
+                        <span
+                          class="pdf-resize-handle"
+                          title="Drag to resize"
+                          @pointerdown.stop="startPdfBoxResize(mapping, $event)"
+                          @pointermove.stop="movePdfBox(mapping, $event)"
+                          @pointerup.stop="endPdfBoxInteraction(mapping, $event)"
+                          @pointercancel.stop="endPdfBoxInteraction(mapping, $event)"
+                        ></span>
+                      </div>
+
+                      <!-- Preview the same field on record 2 -->
+                      <div
+                        v-if="
+                          mapping.repeatPerRecord &&
+                          Number(pdfBatchConfig.recordGapY) > 0
+                        "
+                        class="pdf-map-box pdf-map-box-ghost"
+                        :style="pdfRepeatPreviewStyle(mapping, 1)"
+                        aria-hidden="true"
+                      >
+                        <span class="pdf-map-box-number ghost">
+                          2
+                        </span>
+
+                        <span
+                          class="pdf-map-box-text"
+                          :style="{
+                            textAlign: mapping.align || 'left'
+                          }"
+                        >
+                          {{ pdfMappingPreviewText(mapping, 1) }}
+                        </span>
+                      </div>
+                    </template>
 
                     <!-- Row anchor markers -->
                     <div
@@ -1573,7 +1686,14 @@
                   <div
                     v-for="(mapping, index) in pdfBatchConfig.fields"
                     :key="mapping.id"
-                    class="pdf-mapping-row"
+                    :class="[
+                      'pdf-mapping-row',
+                      {
+                        selected:
+                          selectedPdfMappingId === mapping.id
+                      }
+                    ]"
+                    @click="selectPdfMapping(mapping)"
                   >
                     <span class="pdf-map-number">
                       {{ index + 1 }}
@@ -1674,10 +1794,11 @@
                 </div>
 
                 <div class="pdf-generic-help">
-                  <strong>No coordinate coding required.</strong>
-                  The clicked PDF positions are automatically converted into
-                  PDF coordinates and saved in this template's batch configuration.
-                  Repeating fields use the automatically calculated R1 → R2 spacing.
+                  <strong>Visual designer:</strong>
+                  place each field once, then drag and resize its rectangle directly
+                  over the PDF. The rectangle dimensions and position are saved
+                  automatically. A translucent Record 2 preview is shown when row
+                  spacing is configured so you can immediately verify alignment.
                 </div>
 
               </div>
@@ -2483,6 +2604,15 @@ const pdfPreviewLoading = ref(false)
 const pdfPreviewError = ref('')
 const pdfRenderedViewport = ref(null)
 
+const pdfPreviewBytes = ref(null)
+const pdfMapperZoom = ref(1)
+const selectedPdfMappingId = ref(null)
+const pdfBoxInteraction = ref(null)
+
+const pdfSampleRecords = ref([])
+const pdfSampleIndex = ref(0)
+const pdfSampleLoading = ref(false)
+
 const defaultPdfBatchConfig = () => ({
   source: 'filtered',
   recordsPerPage: 9,
@@ -2521,33 +2651,129 @@ const resetPdfMapper = () => {
   pdfPreviewLoading.value = false
   pdfPreviewError.value = ''
   pdfRenderedViewport.value = null
+  pdfPreviewBytes.value = null
+  pdfMapperZoom.value = 1
+  selectedPdfMappingId.value = null
+  pdfBoxInteraction.value = null
   pdfMappingArmed.value = false
   pdfAnchorMode.value = null
+  pdfSampleRecords.value = []
+  pdfSampleIndex.value = 0
+  pdfSampleLoading.value = false
   pdfNewMapping.value =
     defaultPdfNewMapping()
 }
 
 const renderPdfMapperPreview = async (
-  file
+  source = null
 ) => {
-  if (!file) return
-
   pdfPreviewLoading.value = true
   pdfPreviewError.value = ''
   pdfPageReady.value = false
 
   try {
-    const arrayBuffer =
-      await file.arrayBuffer()
+    let data
 
-    const data =
-      new Uint8Array(
-        arrayBuffer
+    if (source) {
+
+      if (
+        source instanceof Uint8Array
+      ) {
+        data =
+          source.slice()
+
+      } else if (
+        source instanceof ArrayBuffer
+      ) {
+        data =
+          new Uint8Array(
+            source.slice(0)
+          )
+
+      } else if (
+        ArrayBuffer.isView(
+          source
+        )
+      ) {
+        data =
+          new Uint8Array(
+            source.buffer.slice(
+              source.byteOffset,
+              source.byteOffset +
+              source.byteLength
+            )
+          )
+
+      } else if (
+        typeof source.arrayBuffer ===
+        'function'
+      ) {
+        const buffer =
+          await source.arrayBuffer()
+
+        data =
+          new Uint8Array(
+            buffer
+          )
+
+      } else {
+        throw new Error(
+          `Unsupported PDF response type: ${
+            Object.prototype.toString.call(
+              source
+            )
+          }`
+        )
+      }
+
+      pdfPreviewBytes.value =
+        data.slice()
+
+    } else if (
+      pdfPreviewBytes.value
+    ) {
+
+      data =
+        pdfPreviewBytes.value.slice()
+
+    } else {
+
+      throw new Error(
+        'No PDF data was received.'
       )
 
+    }
+
+    if (
+      !data ||
+      !data.byteLength
+    ) {
+      throw new Error(
+        'The saved PDF file is empty.'
+      )
+    }
+
+    const isPdf =
+      data.byteLength >= 4 &&
+      data[0] === 0x25 &&
+      data[1] === 0x50 &&
+      data[2] === 0x44 &&
+      data[3] === 0x46
+
+    if (!isPdf) {
+      throw new Error(
+        'The server response is not a valid PDF file.'
+      )
+    }
+
+    /*
+     * Give PDF.js a disposable copy. Some worker builds may transfer
+     * the typed array internally, so keep our stored preview bytes intact.
+     */
     const loadingTask =
       pdfjsLib.getDocument({
-        data
+        data:
+          data.slice()
       })
 
     const pdf =
@@ -2577,16 +2803,33 @@ const renderPdfMapperPreview = async (
         scale: 1
       })
 
+    /*
+     * Base scale fits a normal editor width.
+     * pdfMapperZoom then magnifies it for precise placement.
+     */
     const maxWidth =
       980
 
-    const scale =
+    const baseScale =
       Math.min(
         1.6,
         Math.max(
           0.7,
           maxWidth /
             unscaled.width
+        )
+      )
+
+    const scale =
+      Math.min(
+        3.5,
+        Math.max(
+          0.45,
+          baseScale *
+          Number(
+            pdfMapperZoom.value ||
+            1
+          )
         )
       )
 
@@ -2623,7 +2866,7 @@ const renderPdfMapperPreview = async (
 
     if (!ctx) {
       throw new Error(
-        'Could not get a 2D canvas context.'
+        'Could not get the PDF preview canvas context.'
       )
     }
 
@@ -2708,11 +2951,84 @@ const renderPdfMapperPreview = async (
 
     pdfPreviewError.value =
       `Could not render this PDF for mapping: ${message}`
+
+    throw err
   } finally {
     pdfPreviewLoading.value =
       false
   }
 }
+
+
+const setPdfMapperZoom = async (
+  zoom
+) => {
+  const nextZoom =
+    Number(
+      zoom
+    ) || 1
+
+  if (
+    pdfMapperZoom.value ===
+    nextZoom
+  ) {
+    return
+  }
+
+  pdfMapperZoom.value =
+    nextZoom
+
+  if (
+    pdfPreviewBytes.value
+  ) {
+    await renderPdfMapperPreview()
+  }
+}
+
+
+const loadPdfSampleRecords = async (
+  moduleId
+) => {
+  pdfSampleRecords.value = []
+  pdfSampleIndex.value = 0
+
+  if (!moduleId) {
+    return
+  }
+
+  pdfSampleLoading.value =
+    true
+
+  try {
+    const res =
+      await api.get(
+        `/logs/module/${moduleId}`
+      )
+
+    const rows =
+      Array.isArray(
+        res.data
+      )
+        ? res.data
+        : []
+
+    pdfSampleRecords.value =
+      rows.slice(
+        0,
+        50
+      )
+
+  } catch (err) {
+    console.warn(
+      'Could not load PDF mapper sample logs:',
+      err
+    )
+  } finally {
+    pdfSampleLoading.value =
+      false
+  }
+}
+
 
 const onPdfSelected = async (e) => {
   editingPdfTemplateId.value = null
@@ -2731,6 +3047,11 @@ const onPdfSelected = async (e) => {
   ) {
     await renderPdfMapperPreview(
       pendingPdfFile.value
+    )
+
+    await loadPdfSampleRecords(
+      editModule.value?.id ||
+      activeModule.value?.id
     )
   }
 }
@@ -3013,6 +3334,9 @@ const onPdfCanvasClick = (
     mapping
   )
 
+  selectedPdfMappingId.value =
+    mapping.id
+
   pdfMappingArmed.value =
     false
 
@@ -3023,10 +3347,24 @@ const onPdfCanvasClick = (
 const removePdfMapping = (
   index
 ) => {
+  const removed =
+    pdfBatchConfig.value.fields[
+      index
+    ]
+
   pdfBatchConfig.value.fields.splice(
     index,
     1
   )
+
+  if (
+    removed?.id &&
+    selectedPdfMappingId.value ===
+    removed.id
+  ) {
+    selectedPdfMappingId.value =
+      null
+  }
 }
 
 const pdfMappingLabel = (
@@ -3171,7 +3509,8 @@ const pdfMarkerStyle = (
 }
 
 const pdfMappingPreviewText = (
-  mapping
+  mapping,
+  recordOffset = 0
 ) => {
   const prefix =
     mapping?.prefix ||
@@ -3181,28 +3520,491 @@ const pdfMappingPreviewText = (
     mapping?.sourceType ===
     'fixed'
   ) {
-    return `${prefix}${mapping.fixedValue || ''}`
+    return `${prefix}${
+      mapping.fixedValue ||
+      ''
+    }`
   }
 
   if (
     mapping?.sourceType ===
     'printDate'
   ) {
-    return `${prefix}09/08/2026`
+    return `${prefix}${
+      new Date()
+        .toLocaleDateString(
+          'en-PH'
+        )
+    }`
   }
 
-  return `${prefix}${mapping?.column || 'Field'}`
+  const records =
+    pdfSampleRecords.value
+
+  const baseIndex =
+    Math.max(
+      0,
+      Number(
+        pdfSampleIndex.value
+      ) || 0
+    )
+
+  const record =
+    records[
+      Math.min(
+        Math.max(
+          0,
+          baseIndex +
+          Number(
+            recordOffset ||
+            0
+          )
+        ),
+        Math.max(
+          0,
+          records.length -
+          1
+        )
+      )
+    ]
+
+  const sample =
+    record?.data?.[
+      mapping?.column
+    ]
+
+  const displayValue =
+    sample !== null &&
+    sample !== undefined &&
+    String(sample) !== ''
+      ? String(sample)
+      : (
+          mapping?.column ||
+          'Field'
+        )
+
+  return `${prefix}${displayValue}`
+}
+
+
+const selectPdfMapping = (
+  mapping
+) => {
+  selectedPdfMappingId.value =
+    mapping?.id ||
+    null
+}
+
+
+const ensurePdfBoxTopLeft = (
+  mapping
+) => {
+  if (
+    !mapping ||
+    mapping.boxMode ===
+    'topLeft'
+  ) {
+    return
+  }
+
+  const height =
+    Math.max(
+      6,
+      Number(
+        mapping.height
+      ) || 16
+    )
+
+  /*
+   * Old mappings stored y as a baseline. Convert once to the
+   * top edge used by the visual designer without moving the box.
+   */
+  mapping.y =
+    Number(
+      mapping.y
+    ) +
+    height
+
+  mapping.boxMode =
+    'topLeft'
+}
+
+
+const startPdfBoxDrag = (
+  mapping,
+  event
+) => {
+  if (
+    event.button !== undefined &&
+    event.button !== 0
+  ) {
+    return
+  }
+
+  ensurePdfBoxTopLeft(
+    mapping
+  )
+
+  selectPdfMapping(
+    mapping
+  )
+
+  pdfMappingArmed.value =
+    false
+
+  pdfAnchorMode.value =
+    null
+
+  pdfBoxInteraction.value = {
+    id:
+      mapping.id,
+
+    mode:
+      'drag',
+
+    pointerId:
+      event.pointerId,
+
+    startClientX:
+      event.clientX,
+
+    startClientY:
+      event.clientY,
+
+    startX:
+      Number(
+        mapping.x
+      ) || 0,
+
+    startY:
+      Number(
+        mapping.y
+      ) || 0,
+
+    startWidth:
+      Math.max(
+        10,
+        Number(
+          mapping.width
+        ) || 120
+      ),
+
+    startHeight:
+      Math.max(
+        6,
+        Number(
+          mapping.height
+        ) || 16
+      )
+  }
+
+  try {
+    event.currentTarget
+      ?.setPointerCapture(
+        event.pointerId
+      )
+  } catch {
+    // Pointer capture is optional.
+  }
+}
+
+
+const startPdfBoxResize = (
+  mapping,
+  event
+) => {
+  ensurePdfBoxTopLeft(
+    mapping
+  )
+
+  selectPdfMapping(
+    mapping
+  )
+
+  pdfBoxInteraction.value = {
+    id:
+      mapping.id,
+
+    mode:
+      'resize',
+
+    pointerId:
+      event.pointerId,
+
+    startClientX:
+      event.clientX,
+
+    startClientY:
+      event.clientY,
+
+    startX:
+      Number(
+        mapping.x
+      ) || 0,
+
+    startY:
+      Number(
+        mapping.y
+      ) || 0,
+
+    startWidth:
+      Math.max(
+        10,
+        Number(
+          mapping.width
+        ) || 120
+      ),
+
+    startHeight:
+      Math.max(
+        6,
+        Number(
+          mapping.height
+        ) || 16
+      )
+  }
+
+  try {
+    event.currentTarget
+      ?.setPointerCapture(
+        event.pointerId
+      )
+  } catch {
+    // Pointer capture is optional.
+  }
+}
+
+
+const movePdfBox = (
+  mapping,
+  event
+) => {
+  const interaction =
+    pdfBoxInteraction.value
+
+  const view =
+    pdfRenderedViewport.value
+
+  if (
+    !interaction ||
+    !view ||
+    interaction.id !==
+      mapping.id ||
+    interaction.pointerId !==
+      event.pointerId
+  ) {
+    return
+  }
+
+  const scale =
+    Number(
+      view.scale
+    ) || 1
+
+  const dx =
+    (
+      event.clientX -
+      interaction.startClientX
+    ) /
+    scale
+
+  const dy =
+    (
+      event.clientY -
+      interaction.startClientY
+    ) /
+    scale
+
+  if (
+    interaction.mode ===
+    'drag'
+  ) {
+    mapping.x =
+      interaction.startX +
+      dx
+
+    /*
+     * Screen Y grows downward, PDF Y grows upward.
+     */
+    mapping.y =
+      interaction.startY -
+      dy
+
+  } else if (
+    interaction.mode ===
+    'resize'
+  ) {
+    mapping.width =
+      Math.max(
+        10,
+        interaction.startWidth +
+        dx
+      )
+
+    mapping.height =
+      Math.max(
+        6,
+        interaction.startHeight +
+        dy
+      )
+  }
+}
+
+
+const endPdfBoxInteraction = (
+  mapping,
+  event
+) => {
+  const interaction =
+    pdfBoxInteraction.value
+
+  if (
+    !interaction ||
+    interaction.id !==
+      mapping.id
+  ) {
+    return
+  }
+
+  try {
+    event.currentTarget
+      ?.releasePointerCapture(
+        event.pointerId
+      )
+  } catch {
+    // Ignore.
+  }
+
+  pdfBoxInteraction.value =
+    null
+}
+
+
+const onPdfBoxKeydown = (
+  mapping,
+  event
+) => {
+  const arrows = [
+    'ArrowLeft',
+    'ArrowRight',
+    'ArrowUp',
+    'ArrowDown'
+  ]
+
+  if (
+    !arrows.includes(
+      event.key
+    )
+  ) {
+    return
+  }
+
+  event.preventDefault()
+
+  ensurePdfBoxTopLeft(
+    mapping
+  )
+
+  selectPdfMapping(
+    mapping
+  )
+
+  const step =
+    event.ctrlKey ||
+    event.metaKey
+      ? 0.25
+      : event.shiftKey
+        ? 5
+        : 1
+
+  if (
+    event.key ===
+    'ArrowLeft'
+  ) {
+    mapping.x -= step
+  }
+
+  if (
+    event.key ===
+    'ArrowRight'
+  ) {
+    mapping.x += step
+  }
+
+  if (
+    event.key ===
+    'ArrowUp'
+  ) {
+    mapping.y += step
+  }
+
+  if (
+    event.key ===
+    'ArrowDown'
+  ) {
+    mapping.y -= step
+  }
+}
+
+
+const pdfRepeatPreviewStyle = (
+  mapping,
+  repeatIndex = 1
+) => {
+  const cloned = {
+    ...mapping,
+
+    y:
+      Number(
+        mapping.y
+      ) -
+      (
+        Number(
+          pdfBatchConfig.value.recordGapY
+        ) || 0
+      ) *
+      Number(
+        repeatIndex ||
+        0
+      )
+  }
+
+  return pdfMarkerStyle(
+    cloned
+  )
 }
 
 
 const normalizePdfBatchConfig = (
   value
 ) => {
-  const raw =
-    value &&
-    typeof value === 'object'
-      ? value
-      : {}
+  let raw = value
+
+  /*
+   * Depending on the DB driver / older saved records,
+   * batchConfig may arrive as a JSON string instead of
+   * an already-parsed object.
+   */
+  if (
+    typeof raw === 'string'
+  ) {
+    try {
+      raw =
+        JSON.parse(
+          raw
+        )
+    } catch {
+      raw = {}
+    }
+  }
+
+  if (
+    !raw ||
+    typeof raw !== 'object' ||
+    Array.isArray(raw)
+  ) {
+    raw = {}
+  }
 
   const fields =
     Array.isArray(
@@ -3257,10 +4059,19 @@ const normalizePdfBatchConfig = (
   }
 }
 
+
 const editPdfTemplate = async (
   template
 ) => {
   try {
+    if (
+      !template?.id
+    ) {
+      throw new Error(
+        'Saved PDF template has no ID.'
+      )
+    }
+
     addTemplateType.value =
       'pdf'
 
@@ -3286,35 +4097,61 @@ const editPdfTemplate = async (
 
     resetPdfMapper()
 
-    pdfPreviewLoading.value =
-      true
-
+    /*
+     * ArrayBuffer is more predictable here than Blob and
+     * works directly with PDF.js.
+     */
     const res =
       await api.get(
         `/modules/templates/${template.id}/file`,
         {
-          responseType: 'blob'
+          responseType:
+            'arraybuffer',
+
+          params: {
+            _ts:
+              Date.now()
+          }
         }
       )
 
     await renderPdfMapperPreview(
       res.data
     )
+
+    await loadPdfSampleRecords(
+      editModule.value?.id ||
+      activeModule.value?.id ||
+      template.moduleId
+    )
+
+    showToast(
+      'Saved PDF mapping loaded',
+      'success'
+    )
+
   } catch (err) {
     console.error(
       'Failed to open PDF template mapping:',
       err
     )
 
+    const status =
+      err?.response?.status
+
+    const detail =
+      err?.message ||
+      'Unknown error'
+
     showToast(
-      'Failed to open the saved PDF mapping',
+      status
+        ? `Failed to open the saved PDF mapping (${status})`
+        : `Failed to open the saved PDF mapping: ${detail}`,
       'error'
     )
-  } finally {
-    pdfPreviewLoading.value =
-      false
   }
 }
+
 
 const saveExistingPdfTemplateConfig = async () => {
   if (
@@ -3360,9 +4197,30 @@ const saveExistingPdfTemplateConfig = async () => {
     true
 
   try {
-    const res =
+
+    /*
+     * Strip Vue reactive/proxy wrappers before sending the JSON config.
+     */
+    const configToSave =
+      JSON.parse(
+        JSON.stringify(
+          pdfBatchConfig.value
+        )
+      )
+
+
+    const templateId =
+      Number(
+        editingPdfTemplateId.value
+      )
+
+
+    /*
+     * 1. Persist the mapping.
+     */
+    const saveRes =
       await api.put(
-        `/modules/templates/${editingPdfTemplateId.value}/config`,
+        `/modules/templates/${templateId}/config`,
         {
           name:
             newPdfName.value ||
@@ -3372,32 +4230,176 @@ const saveExistingPdfTemplateConfig = async () => {
             'batch',
 
           batchConfig:
-            pdfBatchConfig.value
+            configToSave
         }
       )
 
+
+    if (
+      !saveRes?.data
+    ) {
+      throw new Error(
+        'The backend did not return the saved PDF template.'
+      )
+    }
+
+
+    /*
+     * 2. Read the template back from the database.
+     *
+     * Do not trust local state as proof that it saved.
+     */
+    const verifyRes =
+      await api.get(
+        `/modules/templates/${templateId}/config`,
+        {
+          params: {
+            _ts:
+              Date.now()
+          }
+        }
+      )
+
+
+    if (
+      !verifyRes?.data
+    ) {
+      throw new Error(
+        'Could not verify the saved PDF mapping.'
+      )
+    }
+
+
+    const persistedConfig =
+      normalizePdfBatchConfig(
+        verifyRes.data.batchConfig
+      )
+
+
+    /*
+     * Basic persistence verification.
+     */
+    if (
+      persistedConfig.fields.length !==
+      configToSave.fields.length
+    ) {
+      throw new Error(
+        'The saved PDF mapping did not match the mapping sent to the server.'
+      )
+    }
+
+
+    /*
+     * 3. Replace the current editor template with the DB copy.
+     */
     const index =
       editModule.value.templates
         .findIndex(
           t =>
-            t.id ===
-            editingPdfTemplateId.value
+            Number(t.id) ===
+            templateId
         )
 
+
     if (
-      index >= 0 &&
-      res?.data
+      index >= 0
     ) {
+
       editModule.value.templates[index] = {
         ...editModule.value.templates[index],
-        ...res.data
+        ...verifyRes.data,
+
+        batchConfig:
+          persistedConfig
       }
+
     }
 
+
+    /*
+     * 4. Refresh the parent module too so reopening Manage Modules
+     *    cannot resurrect an older in-memory config.
+     */
+    if (
+      editModule.value?.id
+    ) {
+
+      const moduleRes =
+        await api.get(
+          `/modules/single/${editModule.value.id}`,
+          {
+            params: {
+              _ts:
+                Date.now()
+            }
+          }
+        )
+
+
+      const freshModule =
+        moduleRes?.data
+
+
+      if (freshModule) {
+
+        const freshIndex =
+          modules.value.findIndex(
+            item =>
+              Number(item.id) ===
+              Number(freshModule.id)
+          )
+
+
+        if (
+          freshIndex >= 0
+        ) {
+
+          modules.value[freshIndex] = {
+            ...freshModule,
+
+            monitoringConfig:
+              parseMonitoringConfig(
+                freshModule.monitoringConfig
+              ),
+
+            upcomingConfig:
+              parseUpcomingConfig(
+                freshModule.upcomingConfig
+              )
+          }
+
+        }
+
+      }
+
+    }
+
+
+    /*
+     * Keep the verified config in the mapper until we close it.
+     */
+    pdfBatchConfig.value =
+      persistedConfig
+
+
+    console.log(
+      'PDF MAPPING SAVED AND VERIFIED:',
+      {
+        templateId,
+        fields:
+          persistedConfig.fields.length,
+
+        config:
+          persistedConfig
+      }
+    )
+
+
     showToast(
-      'PDF mapping updated successfully',
+      'PDF mapping saved and verified',
       'success'
     )
+
 
     editingPdfTemplateId.value =
       null
@@ -3409,19 +4411,34 @@ const saveExistingPdfTemplateConfig = async () => {
       null
 
     resetPdfMapper()
+
   } catch (err) {
+
     console.error(
       'Failed to save PDF mapping:',
       err
     )
 
+
+    const status =
+      err?.response?.status
+
+
     showToast(
-      'Failed to save PDF mapping',
+      status
+        ? `Failed to save PDF mapping (${status})`
+        : (
+            err?.message ||
+            'Failed to save PDF mapping'
+          ),
       'error'
     )
+
   } finally {
+
     savingPdfTemplateConfig.value =
       false
+
   }
 }
 
@@ -3716,91 +4733,242 @@ const openCreate = () => {
 
 }
 
-const openEdit = (m) => {
+const openEdit = async (m) => {
 
-  activeModule.value = m
+  /*
+   * IMPORTANT:
+   * Always reload the module from the backend before opening.
+   *
+   * Vite HMR can preserve an old in-memory module object. That can leave
+   * deleted template IDs (for example template 12) visible in the editor
+   * even though they no longer exist in module_template.
+   */
+  let fresh = m
 
-  editorMode.value = 'edit'
+  try {
 
-  selectedTemplate.value = null
+    const res =
+      await api.get(
+        `/modules/single/${m.id}`
+      )
 
-  previewGrid.value = []
+    if (res?.data) {
+      fresh = res.data
 
-  workbookRef.value = null
+      /*
+       * Replace the stale module in the local module list too.
+       */
+      const moduleIndex =
+        modules.value.findIndex(
+          item =>
+            Number(item.id) ===
+            Number(m.id)
+        )
 
-  pendingDocxFile.value = null
+      if (moduleIndex >= 0) {
+        modules.value[moduleIndex] = {
+          ...fresh,
+          columns:
+            typeof fresh.columns === 'string'
+              ? JSON.parse(fresh.columns)
+              : fresh.columns,
 
-  pendingPdfFile.value = null
+          monitoringConfig:
+            parseMonitoringConfig(
+              fresh.monitoringConfig
+            ),
 
-  newDocxName.value = ''
+          upcomingConfig:
+            parseUpcomingConfig(
+              fresh.upcomingConfig
+            )
+        }
+      }
+    }
 
-  newPdfName.value = 'PDF Batch Form'
+  } catch (err) {
 
-  pdfBatchConfig.value = defaultPdfBatchConfig()
+    console.error(
+      'Failed to refresh module before editing:',
+      err
+    )
 
-  addTemplateType.value = null
+    showToast(
+      'Could not refresh module data. Using the currently loaded copy.',
+      'error'
+    )
 
-  let parsedColumns = m.columns
+  }
 
-  if (typeof parsedColumns === 'string') parsedColumns = JSON.parse(parsedColumns)
+
+  activeModule.value =
+    fresh
+
+  editorMode.value =
+    'edit'
+
+  selectedTemplate.value =
+    null
+
+  previewGrid.value =
+    []
+
+  workbookRef.value =
+    null
+
+  pendingDocxFile.value =
+    null
+
+  pendingPdfFile.value =
+    null
+
+  newDocxName.value =
+    ''
+
+  newPdfName.value =
+    'PDF Batch Form'
+
+  pdfBatchConfig.value =
+    defaultPdfBatchConfig()
+
+  addTemplateType.value =
+    null
+
+
+  let parsedColumns =
+    fresh.columns
+
+  if (
+    typeof parsedColumns ===
+    'string'
+  ) {
+    parsedColumns =
+      JSON.parse(
+        parsedColumns
+      )
+  }
+
 
   editModule.value = {
 
-    ...m,
+    ...fresh,
 
-    columns: Array.isArray(parsedColumns)
+    columns:
+      Array.isArray(
+        parsedColumns
+      )
+        ? parsedColumns.map(
+            col => ({
 
-      ? parsedColumns.map(col => ({
+              uid:
+                Date.now() +
+                Math.random(),
 
-          uid: Date.now() + Math.random(),
+              ...col,
 
-          ...col,
+              parsedOptions: (() => {
 
-          parsedOptions: (() => {
+                const raw =
+                  typeof col.options ===
+                  'string'
+                    ? JSON.parse(
+                        col.options
+                      )
+                    : (
+                        col.options ||
+                        []
+                      )
 
-            const raw = typeof col.options === 'string'
+                return raw.map(
+                  o =>
+                    typeof o ===
+                    'object'
+                      ? o
+                      : {
+                          label:
+                            o,
 
-              ? JSON.parse(col.options)
+                          color:
+                            '#6b7280'
+                        }
+                )
 
-              : (col.options || [])
+              })(),
 
-            return raw.map(o =>
+              baseUrl:
+                col.baseUrl ||
+                ''
 
-              typeof o === 'object' ? o : { label: o, color: '#6b7280' }
+            })
+          )
+        : [],
 
+    allowedProfiles:
+      fresh.allowedProfiles
+        ?.map(
+          p =>
+            Number(
+              typeof p ===
+              'object'
+                ? p.id
+                : p
             )
+        ) ||
+      [],
 
-          })(),
+    monitoringConfig:
+      parseMonitoringConfig(
+        fresh.monitoringConfig
+      ),
 
-          baseUrl: col.baseUrl || ''
+    upcomingConfig:
+      parseUpcomingConfig(
+        fresh.upcomingConfig
+      ),
 
-        }))
+    /*
+     * Preserve the actual saved Excel batch settings.
+     * The old code reset these to 8 / 1 / 9 every time Edit was opened.
+     */
+    templateStartRow:
+      fresh.templateStartRow ??
+      8,
 
-      : [],
+    templateRowsPerRecord:
+      fresh.templateRowsPerRecord ??
+      1,
 
-    allowedProfiles: m.allowedProfiles?.map(p => Number(typeof p === 'object' ? p.id : p)) || [],
+    templateRowsPerPage:
+      fresh.templateRowsPerPage ??
+      9,
 
-    monitoringConfig: parseMonitoringConfig(m.monitoringConfig),
+    templateMappings:
+      fresh.templateMappings
+        ? (
+            typeof fresh.templateMappings ===
+            'string'
+              ? JSON.parse(
+                  fresh.templateMappings
+                )
+              : fresh.templateMappings
+          )
+        : [],
 
-    upcomingConfig: parseUpcomingConfig(m.upcomingConfig),
-
-    templateStartRow: 8,
-
-    templateRowsPerRecord: 1,
-
-    templateRowsPerPage: 9,
-
-    templateMappings: m.templateMappings
-
-      ? (typeof m.templateMappings === 'string' ? JSON.parse(m.templateMappings) : m.templateMappings)
-
-      : [],
-
-    templates: m.templates || [],
+    /*
+     * This is now always the fresh database relation returned by
+     * GET /modules/single/:id, so deleted template IDs disappear.
+     */
+    templates:
+      Array.isArray(
+        fresh.templates
+      )
+        ? fresh.templates
+        : [],
 
   }
 
 }
+
 
 const closeEditor = () => {
 
@@ -6494,7 +7662,32 @@ const cancelDelete = () => {
   background: rgba(37, 99, 235, 0.10);
   color: #1e3a8a;
   overflow: hidden;
+  pointer-events: auto;
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+
+.pdf-map-box:hover {
+  border-color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.14);
+}
+
+.pdf-map-box.selected {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  box-shadow:
+    0 0 0 2px rgba(245, 158, 11, 0.18),
+    0 3px 10px rgba(15, 23, 42, 0.16);
+}
+
+.pdf-map-box-ghost {
   pointer-events: none;
+  border-style: dashed;
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.07);
+  opacity: 0.72;
 }
 
 .pdf-map-box-number {
@@ -6535,6 +7728,126 @@ const cancelDelete = () => {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+
+
+/* ================= PDF DRAG / RESIZE DESIGNER ================= */
+
+.pdf-designer-toolbar {
+  margin-top: 12px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #dbe3ed;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.pdf-toolbar-label {
+  color: #475569;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pdf-zoom-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.pdf-zoom-btn {
+  padding: 5px 8px;
+  border: 1px solid #dbe3ed;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.pdf-zoom-btn:hover {
+  background: #f1f5f9;
+}
+
+.pdf-zoom-btn.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
+.pdf-sample-picker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.pdf-sample-picker .form-input {
+  min-width: 130px;
+  width: auto;
+}
+
+.pdf-sample-status {
+  color: #64748b;
+  font-size: 10px;
+}
+
+.pdf-designer-hint {
+  flex: 1 1 320px;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.pdf-resize-handle {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  z-index: 5;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #ffffff;
+  border-radius: 3px;
+  background: #2563eb;
+  box-shadow: 0 1px 5px rgba(15, 23, 42, 0.28);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.pdf-map-box.selected .pdf-resize-handle {
+  background: #f59e0b;
+}
+
+.pdf-map-box-number.ghost {
+  background: #059669;
+}
+
+.pdf-mapping-row {
+  cursor: pointer;
+}
+
+.pdf-mapping-row.selected {
+  background: #fffbeb;
+  box-shadow: inset 3px 0 0 #f59e0b;
+}
+
+.pdf-mapping-row.selected .pdf-map-number {
+  background: #f59e0b;
+}
+
+.pdf-visual-mapper {
+  scroll-behavior: smooth;
+}
+
+.pdf-canvas-stage {
+  isolation: isolate;
 }
 
 </style>
