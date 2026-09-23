@@ -1621,22 +1621,70 @@ export class ModulesController {
 
 
       /*
-       * New box mappings store y as TOP-LEFT.
-       * Old mappings keep their original baseline behavior.
+       * New visual mappings store y as the TOP edge of the field box.
+       *
+       * The browser mapper vertically centers the preview text inside
+       * that box. Do the same here using the actual PDF font metrics,
+       * so what the user sees while mapping closely matches the final PDF.
        */
-      const y =
+      let y =
+        shiftedY
+
+
+      if (
         boxMode === 'topLeft'
-          ? shiftedY -
-            Math.min(
-              Math.max(
+      ) {
+
+        const effectiveHeight =
+          height > 0
+            ? height
+            : Math.max(
                 size,
                 4,
-              ),
-              height > 0
-                ? height
-                : size,
+              )
+
+
+        let textHeight =
+          size
+
+
+        try {
+
+          textHeight =
+            font.heightAtSize(
+              size,
+              {
+                descender: false,
+              },
             )
-          : shiftedY
+
+        } catch {
+
+          /*
+           * Fallback for older pdf-lib versions.
+           */
+          textHeight =
+            size * 0.8
+
+        }
+
+
+        /*
+         * drawText() uses a baseline Y coordinate.
+         * Position that baseline so the visible glyph height is centered
+         * in the configured rectangle.
+         */
+        y =
+          shiftedY -
+          Math.max(
+            textHeight,
+            (
+              effectiveHeight +
+              textHeight
+            ) / 2,
+          )
+
+      }
 
 
       page.drawText(

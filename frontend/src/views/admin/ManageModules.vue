@@ -788,10 +788,31 @@
 
               <span style="flex:1;">
                 PDF — {{ t.name }} ({{ t.fileName }})
-                <strong class="template-mode-badge batch">
-                  Batch / filtered
+                <strong
+                  :class="[
+                    'template-mode-badge',
+                    String(t.printMode || 'batch').toLowerCase() === 'row'
+                      ? 'row'
+                      : 'batch'
+                  ]"
+                >
+                  {{
+                    String(t.printMode || 'batch').toLowerCase() === 'row'
+                      ? 'Fill & Print / per row'
+                      : 'Batch / filtered'
+                  }}
                 </strong>
               </span>
+
+              <select
+                :value="t.printMode || 'batch'"
+                class="template-mode-inline-select"
+                @change="updateTemplatePrintMode(t, $event.target.value)"
+                title="Choose how this PDF is used"
+              >
+                <option value="row">Fill & Print / per row</option>
+                <option value="batch">Batch / filtered</option>
+              </select>
 
               <button
                 type="button"
@@ -811,6 +832,53 @@
               </button>
             </div>
 
+          <!-- PENDING PDF — configured in popup, uploaded when module is saved -->
+          <div
+            v-if="pendingPdfFile && addTemplateType !== 'pdf'"
+            class="template-row pending-pdf-template-row"
+          >
+            <span class="template-row-icon">📕</span>
+
+            <span style="flex:1;">
+              PDF — {{ newPdfName || 'PDF Form' }} ({{ pendingPdfFile.name }})
+              <strong
+                :class="[
+                  'template-mode-badge',
+                  newPdfPrintMode === 'row'
+                    ? 'row'
+                    : 'batch'
+                ]"
+              >
+                {{
+                  newPdfPrintMode === 'row'
+                    ? 'Fill & Print / per row'
+                    : 'Batch / filtered'
+                }}
+              </strong>
+
+              <small class="pending-template-note">
+                Ready — will upload when you save the module.
+              </small>
+            </span>
+
+            <button
+              type="button"
+              class="btn-template-edit"
+              @click="reopenPendingPdfMapping"
+            >
+              Edit mapping
+            </button>
+
+            <button
+              type="button"
+              class="btn-remove"
+              @click="discardPendingPdfTemplate"
+              title="Discard pending PDF"
+            >
+              ✕
+            </button>
+          </div>
+
           <!-- CHOOSER: pick which type of template to add -->
 
           <div v-if="!addTemplateType" style="display:flex;gap:8px;">
@@ -829,7 +897,7 @@
 
             <button class="btn-add-col template-choice-btn" @click="startAddTemplate('pdf')" type="button">
 
-              + Add PDF batch template
+              + Add PDF template
 
             </button>
 
@@ -1181,17 +1249,80 @@
 
             <template v-else-if="addTemplateType === 'pdf'">
 
-              <div class="print-mode-card batch-mode-card">
+              <div
+                class="pdf-editor-shell pdf-editor-shell-modal"
+              >
+                <div
+                  class="pdf-editor-surface pdf-editor-surface-modal"
+                >
+                  <div class="pdf-editor-modal-header">
+                    <div>
+                      <h3>
+                        {{
+                          editingPdfTemplateId
+                            ? 'Edit PDF Form Mapping'
+                            : 'Add PDF Form'
+                        }}
+                      </h3>
+
+                      <p v-if="editingPdfTemplateId">
+                        {{ newPdfName }} · {{ editingPdfFileName }}
+                      </p>
+
+                      <p v-else>
+                        Upload a PDF, choose Per row or Batch, then visually map the fields.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      class="pdf-editor-modal-close"
+                      @click="cancelAddTemplate"
+                      :title="
+                        editingPdfTemplateId
+                          ? 'Close mapper'
+                          : 'Cancel new PDF form'
+                      "
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+              <div
+                :class="[
+                  'print-mode-card',
+                  newPdfPrintMode === 'row'
+                    ? 'row-mode-card'
+                    : 'batch-mode-card'
+                ]"
+              >
                 <div class="print-mode-card-title">
                   <span>Print mode</span>
-                  <strong>Batch / filtered records</strong>
+
+                  <select
+                    v-model="newPdfPrintMode"
+                    class="template-mode-inline-select"
+                    @change="onPdfPrintModeChange"
+                  >
+                    <option value="row">
+                      Fill & Print / per row
+                    </option>
+
+                    <option value="batch">
+                      Batch / filtered records
+                    </option>
+                  </select>
                 </div>
 
-                <p>
-                  Upload any PDF form, place a field once, then drag and resize
-                  the box directly on the PDF until it fits. Use real saved log
-                  values as sample text, zoom in for accuracy, and set Record 1
-                  and Record 2 anchors once so repeating rows are spaced automatically.
+                <p v-if="newPdfPrintMode === 'row'">
+                  Use this PDF as the Fill & Print form for one selected log row.
+                  Map every field exactly once. No Record 2 spacing is needed.
+                </p>
+
+                <p v-else>
+                  Use this PDF for filtered batch printing. Map Record 1, then
+                  position the green Record 2 block so all repeating fields keep
+                  the same horizontal alignment and spacing.
                 </p>
               </div>
 
@@ -1232,11 +1363,15 @@
 
                 <div class="pdf-section-card">
                   <div class="pdf-section-title">
-                    1. Batch settings
+                    1. {{
+                      newPdfPrintMode === 'row'
+                        ? 'Form settings'
+                        : 'Batch settings'
+                    }}
                   </div>
 
                   <div class="batch-config-grid">
-                    <div>
+                    <div v-if="newPdfPrintMode === 'batch'">
                       <label class="form-label">Records per page</label>
 
                       <input
@@ -1246,6 +1381,18 @@
                         max="100"
                         class="form-input"
                       />
+                    </div>
+
+                    <div v-else>
+                      <label class="form-label">Records per page</label>
+
+                      <div class="pdf-calculated-field">
+                        1 record
+                      </div>
+
+                      <span class="batch-config-hint">
+                        Per-row Fill & Print always generates one selected record.
+                      </span>
                     </div>
 
                     <div>
@@ -1263,7 +1410,7 @@
                       </span>
                     </div>
 
-                    <div>
+                    <div v-if="newPdfPrintMode === 'batch'">
                       <label class="form-label">Calculated row spacing</label>
 
                       <div class="pdf-calculated-field">
@@ -1275,68 +1422,136 @@
                       </div>
 
                       <span class="batch-config-hint">
-                        Automatically calculated from Record 1 and Record 2 anchors.
+                        Controlled by the movable Record 2 block. All repeating fields use this same spacing.
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <!-- ================= AUTO ROW SPACING ================= -->
+                <!-- ================= RECORD BLOCK SPACING ================= -->
 
-                <div class="pdf-section-card">
+                <div
+                  v-if="newPdfPrintMode === 'batch'"
+                  class="pdf-section-card"
+                >
                   <div class="pdf-section-title">
-                    2. Set repeating-row spacing
+                    2. Position Record 2 block
                   </div>
 
                   <div class="pdf-anchor-help">
-                    Click the same reference point in the first record row,
-                    then the same point in the second record row.
-                    The system calculates the vertical distance automatically.
+                    First map every repeating field in Record 1. Then create a
+                    Record 2 preview. The whole green Record 2 block moves together
+                    vertically, while all X positions remain exactly aligned with
+                    Record 1.
                   </div>
 
-                  <div class="pdf-anchor-actions">
-                    <button
-                      type="button"
-                      class="btn-add-col"
-                      :class="{ active: pdfAnchorMode === 'first' }"
-                      @click="armPdfAnchor('first')"
-                    >
-                      {{
-                        pdfBatchConfig.firstAnchor
-                          ? '✓ Record 1 anchor set'
-                          : 'Set Record 1 anchor'
-                      }}
-                    </button>
+                  <div class="pdf-record-block-controls">
 
                     <button
                       type="button"
                       class="btn-add-col"
-                      :class="{ active: pdfAnchorMode === 'second' }"
-                      @click="armPdfAnchor('second')"
+                      @click="preparePdfRecord2Block"
+                      :disabled="!hasRepeatingPdfFields"
                     >
                       {{
-                        pdfBatchConfig.secondAnchor
-                          ? '✓ Record 2 anchor set'
-                          : 'Set Record 2 anchor'
+                        Number(pdfBatchConfig.recordGapY) > 0
+                          ? 'Reset / position Record 2'
+                          : 'Create Record 2 preview'
                       }}
                     </button>
 
+                    <div class="pdf-gap-editor">
+                      <label class="form-label">
+                        Record spacing (pt)
+                      </label>
+
+                      <input
+                        v-model.number="pdfBatchConfig.recordGapY"
+                        type="number"
+                        min="0.25"
+                        step="0.25"
+                        class="form-input"
+                        @change="normalizePdfRecordGap"
+                      />
+                    </div>
+
+                    <div class="pdf-gap-nudges">
+                      <button
+                        type="button"
+                        class="pdf-nudge-btn"
+                        @click="nudgePdfRecordBlock(-1)"
+                        :disabled="!Number(pdfBatchConfig.recordGapY)"
+                        title="Move Record 2 up by 1 point"
+                      >
+                        ↑ 1 pt
+                      </button>
+
+                      <button
+                        type="button"
+                        class="pdf-nudge-btn"
+                        @click="nudgePdfRecordBlock(-0.25)"
+                        :disabled="!Number(pdfBatchConfig.recordGapY)"
+                        title="Move Record 2 up by 0.25 point"
+                      >
+                        ↑ 0.25
+                      </button>
+
+                      <button
+                        type="button"
+                        class="pdf-nudge-btn"
+                        @click="nudgePdfRecordBlock(0.25)"
+                        :disabled="!Number(pdfBatchConfig.recordGapY)"
+                        title="Move Record 2 down by 0.25 point"
+                      >
+                        ↓ 0.25
+                      </button>
+
+                      <button
+                        type="button"
+                        class="pdf-nudge-btn"
+                        @click="nudgePdfRecordBlock(1)"
+                        :disabled="!Number(pdfBatchConfig.recordGapY)"
+                        title="Move Record 2 down by 1 point"
+                      >
+                        ↓ 1 pt
+                      </button>
+                    </div>
+
                     <button
-                      v-if="pdfBatchConfig.firstAnchor || pdfBatchConfig.secondAnchor"
+                      v-if="Number(pdfBatchConfig.recordGapY) > 0"
                       type="button"
                       class="btn-remove-anchor"
-                      @click="clearPdfAnchors"
+                      @click="resetPdfRecordSpacing"
                     >
-                      Clear anchors
+                      Clear spacing
                     </button>
+
                   </div>
 
                   <div
-                    v-if="pdfAnchorMode"
-                    class="pdf-click-instruction"
+                    v-if="Number(pdfBatchConfig.recordGapY) > 0"
+                    class="pdf-record-block-status"
                   >
-                    Click the {{ pdfAnchorMode === 'first' ? 'first' : 'second' }}
-                    record reference point on the PDF.
+                    <strong>
+                      Record 2 is {{ Number(pdfBatchConfig.recordGapY).toFixed(2) }} pt below Record 1.
+                    </strong>
+
+                    <span>
+                      Drag any green R2 box up/down to move the entire Record 2 block.
+                      Record 3 moves automatically so you can check for spacing drift.
+                    </span>
+
+                    <span>
+                      Keyboard: ↑ / ↓ = 1 pt · Shift = 5 pt · Ctrl = 0.25 pt.
+                    </span>
+                  </div>
+
+                  <div
+                    v-else
+                    class="pdf-record-block-empty"
+                  >
+                    Map the fields for the first record, then click
+                    <strong>Create Record 2 preview</strong>.
                   </div>
                 </div>
 
@@ -1344,7 +1559,11 @@
 
                 <div class="pdf-section-card">
                   <div class="pdf-section-title">
-                    3. Map fields
+                    {{
+                      newPdfPrintMode === 'row'
+                        ? '2. Map fields'
+                        : '3. Map fields'
+                    }}
                   </div>
 
                   <div class="pdf-mapper-toolbar">
@@ -1549,6 +1768,7 @@
 
                   <div class="pdf-designer-hint">
                     Drag a box to move it · drag the bottom-right handle to resize ·
+                    the sample text now starts at the exact saved PDF X position ·
                     Arrow keys = 1pt · Shift + Arrow = 5pt · Ctrl + Arrow = 0.25pt
                   </div>
 
@@ -1626,18 +1846,25 @@
                         ></span>
                       </div>
 
-                      <!-- Preview the same field on record 2 -->
+                      <!-- Record 2: draggable whole-block preview -->
                       <div
                         v-if="
                           mapping.repeatPerRecord &&
                           Number(pdfBatchConfig.recordGapY) > 0
                         "
-                        class="pdf-map-box pdf-map-box-ghost"
+                        class="pdf-map-box pdf-map-box-ghost pdf-map-box-ghost-r2"
                         :style="pdfRepeatPreviewStyle(mapping, 1)"
-                        aria-hidden="true"
+                        tabindex="0"
+                        title="Drag vertically to position the entire Record 2 block"
+                        @click.stop
+                        @keydown="onPdfRecordBlockKeydown"
+                        @pointerdown.stop="startPdfRecordBlockDrag($event)"
+                        @pointermove.stop="movePdfRecordBlock($event)"
+                        @pointerup.stop="endPdfRecordBlockDrag($event)"
+                        @pointercancel.stop="endPdfRecordBlockDrag($event)"
                       >
                         <span class="pdf-map-box-number ghost">
-                          2
+                          R2
                         </span>
 
                         <span
@@ -1649,26 +1876,32 @@
                           {{ pdfMappingPreviewText(mapping, 1) }}
                         </span>
                       </div>
+
+                      <!-- Record 3: non-interactive drift preview -->
+                      <div
+                        v-if="
+                          mapping.repeatPerRecord &&
+                          Number(pdfBatchConfig.recordGapY) > 0 &&
+                          Number(pdfBatchConfig.recordsPerPage) > 2
+                        "
+                        class="pdf-map-box pdf-map-box-ghost pdf-map-box-ghost-r3"
+                        :style="pdfRepeatPreviewStyle(mapping, 2)"
+                        aria-hidden="true"
+                      >
+                        <span class="pdf-map-box-number ghost ghost-r3">
+                          R3
+                        </span>
+
+                        <span
+                          class="pdf-map-box-text"
+                          :style="{
+                            textAlign: mapping.align || 'left'
+                          }"
+                        >
+                          {{ pdfMappingPreviewText(mapping, 2) }}
+                        </span>
+                      </div>
                     </template>
-
-                    <!-- Row anchor markers -->
-                    <div
-                      v-if="pdfBatchConfig.firstAnchor"
-                      class="pdf-anchor-marker first"
-                      :style="pdfPointStyle(pdfBatchConfig.firstAnchor)"
-                      title="Record 1 anchor"
-                    >
-                      R1
-                    </div>
-
-                    <div
-                      v-if="pdfBatchConfig.secondAnchor"
-                      class="pdf-anchor-marker second"
-                      :style="pdfPointStyle(pdfBatchConfig.secondAnchor)"
-                      title="Record 2 anchor"
-                    >
-                      R2
-                    </div>
 
                   </div>
                 </div>
@@ -1767,20 +2000,23 @@
                   </div>
                 </div>
 
-                <div
-                  v-if="editingPdfTemplateId"
-                  class="pdf-edit-actions"
-                >
+                <div class="pdf-edit-actions">
                   <button
                     type="button"
                     class="btn-primary"
-                    @click="saveExistingPdfTemplateConfig"
+                    @click="
+                      editingPdfTemplateId
+                        ? saveExistingPdfTemplateConfig()
+                        : finishNewPdfMapping()
+                    "
                     :disabled="savingPdfTemplateConfig"
                   >
                     {{
                       savingPdfTemplateConfig
                         ? 'Saving…'
-                        : 'Save PDF mapping'
+                        : editingPdfTemplateId
+                          ? 'Save PDF mapping'
+                          : 'Use this PDF form'
                     }}
                   </button>
 
@@ -1797,10 +2033,18 @@
                   <strong>Visual designer:</strong>
                   place each field once, then drag and resize its rectangle directly
                   over the PDF. The rectangle dimensions and position are saved
-                  automatically. A translucent Record 2 preview is shown when row
-                  spacing is configured so you can immediately verify alignment.
+                  automatically.
+                  <span v-if="newPdfPrintMode === 'batch'">
+                    Record 2 and Record 3 previews help verify repeating alignment.
+                  </span>
+                  <span v-else>
+                    This mapping is used by the row Fill & Print button.
+                  </span>
                 </div>
 
+              </div>
+
+                </div>
               </div>
 
             </template>
@@ -1895,7 +2139,7 @@
 
 <script setup>
 
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 
 import draggable from 'vuedraggable'
 
@@ -2040,6 +2284,23 @@ const addTemplateType = ref(null) // null | 'excel' | 'docx' | 'pdf'
 
 const startAddTemplate = (type) => {
 
+  if (type === 'pdf') {
+    editingPdfTemplateId.value = null
+    editingPdfFileName.value = ''
+
+    /*
+     * If there is already a staged PDF, reopen it instead of wiping it.
+     */
+    if (!pendingPdfFile.value) {
+      newPdfName.value = 'PDF Form'
+      newPdfPrintMode.value = 'batch'
+      pdfBatchConfig.value =
+        defaultPdfBatchConfig()
+
+      resetPdfMapper()
+    }
+  }
+
   addTemplateType.value = type
 
   if (type === 'excel' && editModule.value.templateFile && !previewGrid.value.length) {
@@ -2056,7 +2317,190 @@ const cancelAddTemplate = () => {
 
   addTemplateType.value = null
 
+  editingPdfTemplateId.value = null
+  editingPdfFileName.value = ''
+  savingPdfTemplateConfig.value = false
+
+  pendingPdfFile.value = null
+  newPdfName.value = 'PDF Form'
+  newPdfPrintMode.value = 'batch'
+
+  pdfBatchConfig.value =
+    defaultPdfBatchConfig()
+
+  resetPdfMapper()
+
 }
+
+
+const validatePendingPdfMapping = () => {
+
+  if (
+    !pendingPdfFile.value
+  ) {
+    showToast(
+      'Choose a PDF file first',
+      'error'
+    )
+
+    return false
+  }
+
+  if (
+    !String(
+      newPdfName.value ||
+      ''
+    ).trim()
+  ) {
+    showToast(
+      'Enter a template name',
+      'error'
+    )
+
+    return false
+  }
+
+  if (
+    !pdfBatchConfig.value.fields.length
+  ) {
+    showToast(
+      'Add at least one PDF field mapping',
+      'error'
+    )
+
+    return false
+  }
+
+  const hasRepeatingFields =
+    pdfBatchConfig.value.fields.some(
+      field =>
+        field.repeatPerRecord !==
+        false
+    )
+
+  if (
+    newPdfPrintMode.value ===
+      'batch' &&
+    hasRepeatingFields &&
+    Number(
+      pdfBatchConfig.value.recordsPerPage
+    ) > 1 &&
+    !Number(
+      pdfBatchConfig.value.recordGapY
+    )
+  ) {
+    showToast(
+      'Create and position the Record 2 preview first',
+      'error'
+    )
+
+    return false
+  }
+
+  return true
+
+}
+
+
+const finishNewPdfMapping = () => {
+
+  if (
+    !validatePendingPdfMapping()
+  ) {
+    return
+  }
+
+  /*
+   * Hide the mapper WITHOUT clearing pendingPdfFile / batchConfig.
+   * The configured PDF is uploaded when the user saves the module.
+   */
+  addTemplateType.value =
+    null
+
+  editingPdfTemplateId.value =
+    null
+
+  editingPdfFileName.value =
+    ''
+
+  showToast(
+    'PDF form is ready. Save the module to upload it.',
+    'success'
+  )
+
+}
+
+
+const reopenPendingPdfMapping = async () => {
+
+  if (
+    !pendingPdfFile.value
+  ) {
+    return
+  }
+
+  editingPdfTemplateId.value =
+    null
+
+  editingPdfFileName.value =
+    ''
+
+  addTemplateType.value =
+    'pdf'
+
+  await nextTick()
+
+  try {
+
+    await renderPdfMapperPreview(
+      pendingPdfFile.value
+    )
+
+    await loadPdfSampleRecords(
+      editModule.value?.id ||
+      activeModule.value?.id
+    )
+
+  } catch (err) {
+
+    console.error(
+      'Failed to reopen pending PDF mapper:',
+      err
+    )
+
+    showToast(
+      'Failed to reopen the PDF mapping',
+      'error'
+    )
+
+  }
+
+}
+
+
+const discardPendingPdfTemplate = () => {
+
+  pendingPdfFile.value =
+    null
+
+  newPdfName.value =
+    'PDF Form'
+
+  newPdfPrintMode.value =
+    'batch'
+
+  pdfBatchConfig.value =
+    defaultPdfBatchConfig()
+
+  resetPdfMapper()
+
+  showToast(
+    'Pending PDF form discarded',
+    'success'
+  )
+
+}
+
 
 /* ================= TEMPLATE MAPPING STATE (legacy single-Excel-template) ================= */
 
@@ -2591,7 +3035,8 @@ const uploadPendingDocxTemplate = async (moduleId) => {
 
 /* ================= EXCEL-LIKE GENERIC PDF MAPPER ================= */
 
-const newPdfName = ref('PDF Batch Form')
+const newPdfName = ref('PDF Form')
+const newPdfPrintMode = ref('batch')
 const pendingPdfFile = ref(null)
 
 const editingPdfTemplateId = ref(null)
@@ -2608,6 +3053,7 @@ const pdfPreviewBytes = ref(null)
 const pdfMapperZoom = ref(1)
 const selectedPdfMappingId = ref(null)
 const pdfBoxInteraction = ref(null)
+const pdfRecordBlockInteraction = ref(null)
 
 const pdfSampleRecords = ref([])
 const pdfSampleIndex = ref(0)
@@ -2627,6 +3073,24 @@ const pdfBatchConfig = ref(
   defaultPdfBatchConfig()
 )
 
+const onPdfPrintModeChange = () => {
+  if (
+    newPdfPrintMode.value ===
+    'row'
+  ) {
+    pdfBatchConfig.value.recordsPerPage = 1
+    pdfBatchConfig.value.recordGapY = 0
+    pdfBatchConfig.value.firstAnchor = null
+    pdfBatchConfig.value.secondAnchor = null
+  } else if (
+    Number(
+      pdfBatchConfig.value.recordsPerPage
+    ) <= 1
+  ) {
+    pdfBatchConfig.value.recordsPerPage = 9
+  }
+}
+
 const defaultPdfNewMapping = () => ({
   sourceType: 'column',
   column: '',
@@ -2644,7 +3108,6 @@ const pdfNewMapping = ref(
 )
 
 const pdfMappingArmed = ref(false)
-const pdfAnchorMode = ref(null)
 
 const resetPdfMapper = () => {
   pdfPageReady.value = false
@@ -2655,8 +3118,8 @@ const resetPdfMapper = () => {
   pdfMapperZoom.value = 1
   selectedPdfMappingId.value = null
   pdfBoxInteraction.value = null
+  pdfRecordBlockInteraction.value = null
   pdfMappingArmed.value = false
-  pdfAnchorMode.value = null
   pdfSampleRecords.value = []
   pdfSampleIndex.value = 0
   pdfSampleLoading.value = false
@@ -3095,74 +3558,364 @@ const canvasClickToPdfPoint = (
   }
 }
 
-const armPdfAnchor = (
-  mode
+const snapPdfSpacing = (
+  value
 ) => {
-  if (!pdfPageReady.value) {
+  const numeric =
+    Number(
+      value
+    )
+
+  if (
+    !Number.isFinite(
+      numeric
+    )
+  ) {
+    return 0
+  }
+
+  /*
+   * Quarter-point precision is fine enough for PDF placement
+   * while still preventing ugly floating point values.
+   */
+  return Math.max(
+    0.25,
+    Math.round(
+      numeric * 4
+    ) / 4
+  )
+}
+
+
+const hasRepeatingPdfFields = computed(() =>
+  pdfBatchConfig.value.fields.some(
+    field =>
+      field.repeatPerRecord !==
+      false
+  )
+)
+
+
+const estimatePdfRecordGap = () => {
+  const repeating =
+    pdfBatchConfig.value.fields.filter(
+      field =>
+        field.repeatPerRecord !==
+        false
+    )
+
+  if (!repeating.length) {
+    return 24
+  }
+
+  repeating.forEach(
+    field =>
+      ensurePdfBoxTopLeft(
+        field
+      )
+  )
+
+  /*
+   * PDF Y grows upward.
+   * "y" is the top edge for new visual mappings.
+   */
+  const highestTop =
+    Math.max(
+      ...repeating.map(
+        field =>
+          Number(
+            field.y
+          ) || 0
+      )
+    )
+
+  const lowestBottom =
+    Math.min(
+      ...repeating.map(
+        field =>
+          (
+            Number(
+              field.y
+            ) || 0
+          ) -
+          Math.max(
+            6,
+            Number(
+              field.height
+            ) || 16
+          )
+      )
+    )
+
+  const blockHeight =
+    Math.max(
+      8,
+      highestTop -
+      lowestBottom
+    )
+
+  /*
+   * Give the next record a small visual clearance.
+   * The user then drags R2 onto the exact form row.
+   */
+  return snapPdfSpacing(
+    blockHeight + 3
+  )
+}
+
+
+const preparePdfRecord2Block = () => {
+  if (
+    !pdfPageReady.value
+  ) {
     showToast(
-      'Upload a PDF first',
+      'Upload or open the PDF first',
       'error'
     )
     return
   }
 
-  pdfMappingArmed.value =
-    false
+  if (
+    !hasRepeatingPdfFields.value
+  ) {
+    showToast(
+      'Map at least one repeating field first',
+      'error'
+    )
+    return
+  }
 
-  pdfAnchorMode.value =
-    mode
-}
+  pdfBatchConfig.value.recordGapY =
+    estimatePdfRecordGap()
 
-const clearPdfAnchors = () => {
+  /*
+   * Old point anchors are no longer needed.
+   * Keep them cleared so saved configs only rely on recordGapY.
+   */
   pdfBatchConfig.value.firstAnchor =
     null
 
   pdfBatchConfig.value.secondAnchor =
     null
 
-  pdfBatchConfig.value.recordGapY =
-    0
-
-  pdfAnchorMode.value =
-    null
+  showToast(
+    'Record 2 preview created. Drag any green R2 box vertically to align it.',
+    'success'
+  )
 }
 
-const calculatePdfRecordSpacing = () => {
-  const first =
-    pdfBatchConfig.value
-      .firstAnchor
 
-  const second =
-    pdfBatchConfig.value
-      .secondAnchor
+const normalizePdfRecordGap = () => {
+  const value =
+    Number(
+      pdfBatchConfig.value.recordGapY
+    )
 
   if (
-    !first ||
-    !second
+    !Number.isFinite(value) ||
+    value <= 0
+  ) {
+    pdfBatchConfig.value.recordGapY =
+      0
+    return
+  }
+
+  pdfBatchConfig.value.recordGapY =
+    snapPdfSpacing(
+      value
+    )
+}
+
+
+const nudgePdfRecordBlock = (
+  delta
+) => {
+  const current =
+    Number(
+      pdfBatchConfig.value.recordGapY
+    )
+
+  if (
+    !Number.isFinite(current) ||
+    current <= 0
   ) {
     return
   }
 
-  /*
-   * PDF origin is bottom-left.
-   * A lower second row has a smaller Y value.
-   */
-  const gap =
-    first.y -
-    second.y
-
   pdfBatchConfig.value.recordGapY =
-    Math.abs(
+    snapPdfSpacing(
+      current +
       Number(
-        gap.toFixed(3)
+        delta
       )
     )
+}
 
-  showToast(
-    `Row spacing calculated: ${pdfBatchConfig.value.recordGapY} pt`,
-    'success'
+
+const resetPdfRecordSpacing = () => {
+  pdfBatchConfig.value.recordGapY =
+    0
+
+  pdfBatchConfig.value.firstAnchor =
+    null
+
+  pdfBatchConfig.value.secondAnchor =
+    null
+
+  pdfRecordBlockInteraction.value =
+    null
+}
+
+
+const startPdfRecordBlockDrag = (
+  event
+) => {
+  if (
+    event.button !== undefined &&
+    event.button !== 0
+  ) {
+    return
+  }
+
+  const view =
+    pdfRenderedViewport.value
+
+  const currentGap =
+    Number(
+      pdfBatchConfig.value.recordGapY
+    )
+
+  if (
+    !view ||
+    !Number.isFinite(currentGap) ||
+    currentGap <= 0
+  ) {
+    return
+  }
+
+  pdfMappingArmed.value =
+    false
+
+  pdfRecordBlockInteraction.value = {
+    pointerId:
+      event.pointerId,
+
+    startClientY:
+      event.clientY,
+
+    startGap:
+      currentGap
+  }
+
+  try {
+    event.currentTarget
+      ?.setPointerCapture(
+        event.pointerId
+      )
+  } catch {
+    // Pointer capture is optional.
+  }
+}
+
+
+const movePdfRecordBlock = (
+  event
+) => {
+  const interaction =
+    pdfRecordBlockInteraction.value
+
+  const view =
+    pdfRenderedViewport.value
+
+  if (
+    !interaction ||
+    !view ||
+    interaction.pointerId !==
+      event.pointerId
+  ) {
+    return
+  }
+
+  const scale =
+    Number(
+      view.scale
+    ) || 1
+
+  /*
+   * Screen Y grows downward.
+   * Increasing recordGapY also moves R2 downward.
+   */
+  const delta =
+    (
+      event.clientY -
+      interaction.startClientY
+    ) /
+    scale
+
+  pdfBatchConfig.value.recordGapY =
+    snapPdfSpacing(
+      interaction.startGap +
+      delta
+    )
+}
+
+
+const endPdfRecordBlockDrag = (
+  event
+) => {
+  const interaction =
+    pdfRecordBlockInteraction.value
+
+  if (!interaction) {
+    return
+  }
+
+  try {
+    event.currentTarget
+      ?.releasePointerCapture(
+        event.pointerId
+      )
+  } catch {
+    // Ignore.
+  }
+
+  pdfRecordBlockInteraction.value =
+    null
+}
+
+
+const onPdfRecordBlockKeydown = (
+  event
+) => {
+  if (
+    ![
+      'ArrowUp',
+      'ArrowDown'
+    ].includes(
+      event.key
+    )
+  ) {
+    return
+  }
+
+  event.preventDefault()
+
+  const step =
+    event.ctrlKey ||
+    event.metaKey
+      ? 0.25
+      : event.shiftKey
+        ? 5
+        : 1
+
+  nudgePdfRecordBlock(
+    event.key ===
+    'ArrowUp'
+      ? -step
+      : step
   )
 }
+
 
 const armPdfMapping = () => {
   if (
@@ -3197,9 +3950,6 @@ const armPdfMapping = () => {
     return
   }
 
-  pdfAnchorMode.value =
-    null
-
   pdfMappingArmed.value =
     true
 
@@ -3218,49 +3968,6 @@ const onPdfCanvasClick = (
     )
 
   if (!point) {
-    return
-  }
-
-  /*
-   * Anchor placement takes priority when armed.
-   */
-  if (
-    pdfAnchorMode.value ===
-    'first'
-  ) {
-    pdfBatchConfig.value.firstAnchor = {
-      x:
-        point.x,
-
-      y:
-        point.y
-    }
-
-    pdfAnchorMode.value =
-      null
-
-    calculatePdfRecordSpacing()
-
-    return
-  }
-
-  if (
-    pdfAnchorMode.value ===
-    'second'
-  ) {
-    pdfBatchConfig.value.secondAnchor = {
-      x:
-        point.x,
-
-      y:
-        point.y
-    }
-
-    pdfAnchorMode.value =
-      null
-
-    calculatePdfRecordSpacing()
-
     return
   }
 
@@ -3651,9 +4358,6 @@ const startPdfBoxDrag = (
 
   pdfMappingArmed.value =
     false
-
-  pdfAnchorMode.value =
-    null
 
   pdfBoxInteraction.value = {
     id:
@@ -4052,9 +4756,51 @@ const normalizePdfBatchConfig = (
         )
       : []
 
+  let recordGapY =
+    Number(
+      raw.recordGapY
+    ) || 0
+
+  /*
+   * Backward compatibility:
+   * old mappings used R1/R2 point anchors.
+   * If they have a valid spacing, migrate that spacing once.
+   */
+  if (
+    recordGapY <= 0 &&
+    raw.firstAnchor &&
+    raw.secondAnchor
+  ) {
+    recordGapY =
+      Math.abs(
+        Number(
+          raw.firstAnchor.y
+        ) -
+        Number(
+          raw.secondAnchor.y
+        )
+      )
+  }
+
   return {
     ...defaultPdfBatchConfig(),
     ...raw,
+
+    recordGapY:
+      recordGapY > 0
+        ? snapPdfSpacing(recordGapY)
+        : 0,
+
+    /*
+     * Point anchors are intentionally cleared.
+     * New UI uses the draggable Record 2 block instead.
+     */
+    firstAnchor:
+      null,
+
+    secondAnchor:
+      null,
+
     fields
   }
 }
@@ -4085,7 +4831,15 @@ const editPdfTemplate = async (
 
     newPdfName.value =
       template.name ||
-      'PDF Batch Form'
+      'PDF Form'
+
+    newPdfPrintMode.value =
+      String(
+        template.printMode ||
+        'batch'
+      ).toLowerCase() === 'row'
+        ? 'row'
+        : 'batch'
 
     pendingPdfFile.value =
       null
@@ -4094,6 +4848,16 @@ const editPdfTemplate = async (
       normalizePdfBatchConfig(
         template.batchConfig
       )
+
+    if (
+      newPdfPrintMode.value ===
+      'row'
+    ) {
+      pdfBatchConfig.value.recordsPerPage = 1
+      pdfBatchConfig.value.recordGapY = 0
+      pdfBatchConfig.value.firstAnchor = null
+      pdfBatchConfig.value.secondAnchor = null
+    }
 
     resetPdfMapper()
 
@@ -4178,6 +4942,7 @@ const saveExistingPdfTemplateConfig = async () => {
     )
 
   if (
+    newPdfPrintMode.value === 'batch' &&
     hasRepeatingFields &&
     Number(
       pdfBatchConfig.value.recordsPerPage
@@ -4187,7 +4952,7 @@ const saveExistingPdfTemplateConfig = async () => {
     )
   ) {
     showToast(
-      'Set Record 1 and Record 2 anchors first',
+      'Create and position the Record 2 preview first',
       'error'
     )
     return
@@ -4224,10 +4989,10 @@ const saveExistingPdfTemplateConfig = async () => {
         {
           name:
             newPdfName.value ||
-            'PDF Batch Form',
+            'PDF Form',
 
           printMode:
-            'batch',
+            newPdfPrintMode.value,
 
           batchConfig:
             configToSave
@@ -4469,6 +5234,7 @@ const uploadPendingPdfTemplate = async (
     )
 
   if (
+    newPdfPrintMode.value === 'batch' &&
     hasRepeatingFields &&
     Number(
       pdfBatchConfig.value.recordsPerPage
@@ -4478,7 +5244,7 @@ const uploadPendingPdfTemplate = async (
     )
   ) {
     showToast(
-      'Set Record 1 and Record 2 anchors so row spacing can be calculated',
+      'Create and position the Record 2 preview so row spacing can be saved',
       'error'
     )
 
@@ -4499,7 +5265,7 @@ const uploadPendingPdfTemplate = async (
     formData.append(
       'name',
       newPdfName.value ||
-      'PDF Batch Form'
+      'PDF Form'
     )
 
     formData.append(
@@ -4509,13 +5275,30 @@ const uploadPendingPdfTemplate = async (
 
     formData.append(
       'printMode',
-      'batch'
+      newPdfPrintMode.value
     )
+
+    const configToUpload =
+      JSON.parse(
+        JSON.stringify(
+          pdfBatchConfig.value
+        )
+      )
+
+    if (
+      newPdfPrintMode.value ===
+      'row'
+    ) {
+      configToUpload.recordsPerPage = 1
+      configToUpload.recordGapY = 0
+      configToUpload.firstAnchor = null
+      configToUpload.secondAnchor = null
+    }
 
     formData.append(
       'batchConfig',
       JSON.stringify(
-        pdfBatchConfig.value
+        configToUpload
       )
     )
 
@@ -4543,7 +5326,10 @@ const uploadPendingPdfTemplate = async (
       null
 
     newPdfName.value =
-      'PDF Batch Form'
+      'PDF Form'
+
+    newPdfPrintMode.value =
+      'batch'
 
     pdfBatchConfig.value =
       defaultPdfBatchConfig()
@@ -4681,7 +5467,9 @@ const openCreate = () => {
 
   newDocxName.value = ''
 
-  newPdfName.value = 'PDF Batch Form'
+  newPdfName.value = 'PDF Form'
+
+  newPdfPrintMode.value = 'batch'
 
   pdfBatchConfig.value = defaultPdfBatchConfig()
 
@@ -7661,7 +8449,14 @@ const cancelDelete = () => {
   border-radius: 4px;
   background: rgba(37, 99, 235, 0.10);
   color: #1e3a8a;
-  overflow: hidden;
+
+  /*
+   * IMPORTANT:
+   * The mapping label and resize handle live outside the box.
+   * The text itself clips inside .pdf-map-box-text.
+   */
+  overflow: visible;
+
   pointer-events: auto;
   cursor: move;
   touch-action: none;
@@ -7690,14 +8485,46 @@ const cancelDelete = () => {
   opacity: 0.72;
 }
 
+.pdf-map-box-ghost-r2 {
+  pointer-events: auto;
+  cursor: ns-resize;
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.10);
+  opacity: 0.82;
+  touch-action: none;
+  z-index: 4;
+}
+
+.pdf-map-box-ghost-r2:hover,
+.pdf-map-box-ghost-r2:focus {
+  border-color: #059669;
+  background: rgba(16, 185, 129, 0.17);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.14);
+  outline: none;
+}
+
+.pdf-map-box-ghost-r3 {
+  pointer-events: none;
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.06);
+  opacity: 0.52;
+  z-index: 2;
+}
+
 .pdf-map-box-number {
+  /*
+   * Keep the mapper badge OUTSIDE the actual text rectangle.
+   * Previously this badge consumed ~20 px inside the field, so the
+   * preview looked aligned while the generated PDF started farther left.
+   */
   position: absolute;
-  top: 1px;
-  left: 2px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 4px;
+  top: 0;
+  left: 0;
+  transform: translate(-45%, -105%);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
   background: #2563eb;
   color: #ffffff;
   display: inline-flex;
@@ -7705,18 +8532,29 @@ const cancelDelete = () => {
   justify-content: center;
   font-size: 9px;
   font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.22);
+  pointer-events: none;
 }
 
 .pdf-map-box-text {
+  /*
+   * WYSIWYG positioning:
+   * text starts at the exact X coordinate of the saved PDF box.
+   * No hidden 20 px mapper-only offset.
+   */
   position: absolute;
-  left: 20px;
-  right: 3px;
+  left: 0;
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
+  box-sizing: border-box;
+  padding: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: clip;
   line-height: 1;
+  pointer-events: none;
 }
 
 .pdf-inline-select {
@@ -7829,6 +8667,10 @@ const cancelDelete = () => {
   background: #059669;
 }
 
+.pdf-map-box-number.ghost-r3 {
+  background: #7c3aed;
+}
+
 .pdf-mapping-row {
   cursor: pointer;
 }
@@ -7848,6 +8690,226 @@ const cancelDelete = () => {
 
 .pdf-canvas-stage {
   isolation: isolate;
+}
+
+
+
+/* ================= PDF RECORD BLOCK POSITIONING ================= */
+
+.pdf-record-block-controls {
+  margin-top: 11px;
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.pdf-record-block-controls .btn-add-col:disabled,
+.pdf-nudge-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pdf-gap-editor {
+  width: 150px;
+}
+
+.pdf-gap-nudges {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.pdf-nudge-btn {
+  min-height: 36px;
+  padding: 0 9px;
+  border: 1px solid #dbe3ed;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pdf-nudge-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.pdf-record-block-status,
+.pdf-record-block-empty {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.pdf-record-block-status {
+  border: 1px solid #a7f3d0;
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.pdf-record-block-status strong,
+.pdf-record-block-status span {
+  display: block;
+}
+
+.pdf-record-block-status span {
+  margin-top: 3px;
+  color: #047857;
+}
+
+.pdf-record-block-empty {
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+@media (max-width: 760px) {
+  .pdf-gap-editor {
+    width: 100%;
+  }
+
+  .pdf-gap-nudges {
+    width: 100%;
+  }
+
+  .pdf-nudge-btn {
+    flex: 1 1 auto;
+  }
+}
+
+
+
+/* ================= PDF FULL-SCREEN MAPPING MODAL ================= */
+
+.pdf-editor-shell {
+  width: 100%;
+}
+
+.pdf-editor-surface {
+  width: 100%;
+}
+
+.pdf-editor-shell-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  padding: 18px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(5px);
+}
+
+.pdf-editor-surface-modal {
+  width: min(96vw, 1680px);
+  height: 94vh;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 0 18px 22px;
+  border-radius: 16px;
+  background: #f8fafc;
+  box-shadow:
+    0 28px 90px rgba(15, 23, 42, 0.35);
+}
+
+.pdf-editor-modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  margin: 0 -18px 14px;
+  padding: 15px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(8px);
+}
+
+.pdf-editor-modal-header h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.pdf-editor-modal-header p {
+  margin: 3px 0 0;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.pdf-editor-modal-close {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dbe3ed;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.pdf-editor-modal-close:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.pdf-editor-surface-modal .pdf-visual-mapper {
+  max-height: 68vh;
+}
+
+.pdf-editor-surface-modal .pdf-edit-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 25;
+  margin: 14px -18px -22px;
+  padding: 12px 18px;
+  border-top: 1px solid #e2e8f0;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(8px);
+}
+
+@media (max-width: 760px) {
+  .pdf-editor-shell-modal {
+    padding: 0;
+  }
+
+  .pdf-editor-surface-modal {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+  }
+}
+
+
+
+/* ================= PENDING PDF FORM ================= */
+
+.pending-pdf-template-row {
+  margin-bottom: 10px;
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+
+.pending-template-note {
+  display: block;
+  margin-top: 3px;
+  color: #16a34a;
+  font-size: 10px;
+  font-weight: 600;
 }
 
 </style>

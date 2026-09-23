@@ -475,15 +475,15 @@
 
                 <button
 
-                  v-if="docxTemplate"
+                  v-if="rowPrintTemplates.length"
 
                   class="action-btn"
 
-                  @click.stop="fillAndPrint(log)"
+                  @click.stop="openRowFillAndPrint(log)"
 
                   title="Fill & Print form"
 
-                  :disabled="filling"
+                  :disabled="filling || rowPdfGenerating"
 
                 >
 
@@ -899,7 +899,62 @@
   
 
 
-    <!-- ================= BATCH EXCEL PRINT PREVIEW ================= -->
+    <!-- ================= ROW FILL & PRINT TEMPLATE CHOOSER ================= -->
+    <div
+      v-if="showRowPrintChooser"
+      class="row-print-chooser-backdrop"
+      @click.self="closeRowPrintChooser"
+    >
+      <div class="row-print-chooser-modal">
+        <div class="row-print-chooser-header">
+          <div>
+            <h3>Fill & Print</h3>
+            <p>Choose the form to use for this record.</p>
+          </div>
+
+          <button
+            type="button"
+            class="row-print-chooser-close"
+            @click="closeRowPrintChooser"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div class="row-print-chooser-list">
+          <button
+            v-for="tpl in rowPrintTemplates"
+            :key="'row-print-' + tpl.id"
+            type="button"
+            class="row-print-template-option"
+            @click="useRowPrintTemplate(tpl)"
+          >
+            <span class="row-print-template-icon">
+              {{
+                String(tpl.kind || '').toLowerCase() === 'pdf'
+                  ? '📕'
+                  : '📄'
+              }}
+            </span>
+
+            <span class="row-print-template-copy">
+              <strong>{{ tpl.name }}</strong>
+              <small>
+                {{
+                  String(tpl.kind || '').toLowerCase() === 'pdf'
+                    ? 'PDF · exact mapped form'
+                    : 'Word · Fill & Print form'
+                }}
+              </small>
+            </span>
+
+            <span class="row-print-template-arrow">›</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= DOCUMENT PRINT PREVIEW ================= -->
     <div
       v-if="showBatchPreview"
       class="batch-preview-backdrop"
@@ -908,7 +963,7 @@
       <div class="batch-preview-modal">
         <div class="batch-preview-header">
           <div>
-            <h3>Batch Form Preview</h3>
+            <h3>{{ documentPreviewTitle }}</h3>
             <p>
               {{ batchPreviewPages.length }} page(s) ·
               {{ batchPreviewRecordCount }} record(s)
@@ -940,7 +995,7 @@
 
         <div class="batch-preview-footer">
           <div class="batch-preview-info">
-            The preview uses the generated batch document. PDF templates preserve the original uploaded page exactly.
+            {{ documentPreviewInfo }}
           </div>
 
           <div class="batch-preview-actions">
@@ -1250,6 +1305,15 @@ const batchGenerating = ref(false)
 
 const batchDocxGenerating = ref(false)
 const batchPdfGenerating = ref(false)
+const rowPdfGenerating = ref(false)
+
+const showRowPrintChooser = ref(false)
+const rowPrintChooserLog = ref(null)
+
+const documentPreviewTitle = ref('Batch Form Preview')
+const documentPreviewInfo = ref(
+  'The preview uses the generated document. PDF templates preserve the original uploaded page exactly.'
+)
 
 const batchDownloadBlob = ref(null)
 const batchDownloadFileName = ref('')
@@ -2764,6 +2828,12 @@ const generateBatchExcel = async () => {
         pageFiles
       )
 
+    documentPreviewTitle.value =
+      'Batch Form Preview'
+
+    documentPreviewInfo.value =
+      'This preview contains the records currently matching the module filters.'
+
     showBatchPreview.value =
       true
 
@@ -2897,6 +2967,13 @@ const generateBatchPdf = async (
               recordsPerPage
           )
       )
+
+    documentPreviewTitle.value =
+      template.name ||
+      'Batch PDF Preview'
+
+    documentPreviewInfo.value =
+      'This preview contains the records currently matching the module filters.'
 
     showBatchPreview.value =
       true
@@ -3079,13 +3156,30 @@ const generateBatchDocx = async (
 
 // Use the first DOCX template attached to this module.
 // Case-insensitive so "DOCX", "Docx", and "docx" all work.
-const docxTemplate = computed(() =>
-  (module.value?.templates || []).find(
+const rowDocxTemplates = computed(() =>
+  (module.value?.templates || []).filter(
     t =>
       String(t.kind || '').toLowerCase() === 'docx' &&
       String(t.printMode || 'row').toLowerCase() !== 'batch'
   )
 )
+
+const docxTemplate = computed(() =>
+  rowDocxTemplates.value[0] || null
+)
+
+const rowPdfTemplates = computed(() =>
+  (module.value?.templates || []).filter(
+    t =>
+      String(t.kind || '').toLowerCase() === 'pdf' &&
+      String(t.printMode || 'batch').toLowerCase() === 'row'
+  )
+)
+
+const rowPrintTemplates = computed(() => [
+  ...rowDocxTemplates.value,
+  ...rowPdfTemplates.value
+])
 
 const batchDocxTemplates = computed(() =>
   (module.value?.templates || []).filter(
@@ -3107,11 +3201,236 @@ const batchPdfTemplates = computed(() =>
 const toTag = (name) =>
   String(name || '').replace(/[^a-zA-Z0-9]/g, '')
 
+/* ================= ROW FILL & PRINT ================= */
+
+const closeRowPrintChooser = () => {
+  showRowPrintChooser.value = false
+  rowPrintChooserLog.value = null
+}
+
+const openRowFillAndPrint = async (
+  log
+) => {
+  if (
+    !rowPrintTemplates.value.length
+  ) {
+    showToast(
+      'No per-row Fill & Print template is configured',
+      'error'
+    )
+    return
+  }
+
+  /*
+   * One template = open immediately.
+   * Multiple templates = let the user choose the form.
+   */
+  if (
+    rowPrintTemplates.value.length === 1
+  ) {
+    await runRowPrintTemplate(
+      rowPrintTemplates.value[0],
+      log
+    )
+    return
+  }
+
+  rowPrintChooserLog.value =
+    log
+
+  showRowPrintChooser.value =
+    true
+}
+
+const useRowPrintTemplate = async (
+  template
+) => {
+  const log =
+    rowPrintChooserLog.value
+
+  closeRowPrintChooser()
+
+  if (!log) {
+    return
+  }
+
+  await runRowPrintTemplate(
+    template,
+    log
+  )
+}
+
+const runRowPrintTemplate = async (
+  template,
+  log
+) => {
+  const kind =
+    String(
+      template?.kind ||
+      ''
+    ).toLowerCase()
+
+  if (kind === 'pdf') {
+    await generateRowPdf(
+      template,
+      log
+    )
+    return
+  }
+
+  if (kind === 'docx') {
+    await fillAndPrint(
+      log,
+      template
+    )
+    return
+  }
+
+  showToast(
+    'Unsupported Fill & Print template type',
+    'error'
+  )
+}
+
+const generateRowPdf = async (
+  template,
+  log
+) => {
+  if (
+    !template?.id ||
+    !log
+  ) {
+    return
+  }
+
+  rowPdfGenerating.value =
+    true
+
+  try {
+    const selectedRecord = {
+      id:
+        log.id,
+
+      data:
+        typeof structuredClone === 'function'
+          ? structuredClone(
+              log.data || {}
+            )
+          : JSON.parse(
+              JSON.stringify(
+                log.data || {}
+              )
+            )
+    }
+
+    /*
+     * Reuse the exact mapped-PDF renderer.
+     * Supplying one record makes this a per-row form.
+     */
+    const res =
+      await api.post(
+        `/modules/templates/${template.id}/batch-pdf`,
+        {
+          records: [
+            selectedRecord
+          ]
+        },
+        {
+          responseType:
+            'blob'
+        }
+      )
+
+    const pdfBlob =
+      new Blob(
+        [res.data],
+        {
+          type:
+            'application/pdf'
+        }
+      )
+
+    revokePreviewUrl(
+      batchPreviewPdfUrl.value
+    )
+
+    batchPreviewPdfUrl.value =
+      URL.createObjectURL(
+        pdfBlob
+      )
+
+    batchDownloadBlob.value =
+      pdfBlob
+
+    const cleanName =
+      String(
+        template.name ||
+        'Fill_Print_Form'
+      ).replace(
+        /[^a-zA-Z0-9_-]+/g,
+        '_'
+      )
+
+    batchDownloadFileName.value =
+      `${cleanName}_${
+        log.id ?? 'record'
+      }.pdf`
+
+    batchDownloadLabel.value =
+      'Download PDF'
+
+    batchPreviewRecordCount.value =
+      1
+
+    batchPreviewPages.value = [
+      [
+        selectedRecord
+      ]
+    ]
+
+    documentPreviewTitle.value =
+      template.name ||
+      'Fill & Print Preview'
+
+    documentPreviewInfo.value =
+      'This is the exact mapped PDF form for the selected log row.'
+
+    showBatchPreview.value =
+      true
+
+    showToast(
+      'PDF Fill & Print preview ready',
+      'success'
+    )
+  } catch (err) {
+    console.error(
+      'Row PDF generation failed:',
+      err
+    )
+
+    showToast(
+      'Failed to generate the PDF Fill & Print form',
+      'error'
+    )
+  } finally {
+    rowPdfGenerating.value =
+      false
+  }
+}
+
+
 /* ================= DOCX FILL & PREVIEW ================= */
 
-const fillAndPrint = async (log) => {
+const fillAndPrint = async (
+  log,
+  templateOverride = null
+) => {
 
-  if (!docxTemplate.value) return
+  const selectedTemplate =
+    templateOverride ||
+    docxTemplate.value
+
+  if (!selectedTemplate) return
 
   /*
    * Snapshot the CLICKED row immediately.
@@ -3173,7 +3492,7 @@ const fillAndPrint = async (log) => {
     ----------------------------------------- */
 
     const res = await api.get(
-      `/modules/templates/${docxTemplate.value.id}/file`,
+      `/modules/templates/${selectedTemplate.id}/file`,
       {
         responseType: 'arraybuffer'
       }
@@ -3289,7 +3608,7 @@ const fillAndPrint = async (log) => {
 
     const safeName =
       (
-        docxTemplate.value.name ||
+        selectedTemplate.name ||
         'Form'
       ).replace(
         /[^a-zA-Z0-9-_ ]/g,
@@ -5858,5 +6177,125 @@ watch(() => route.params.id, async (newId, oldId) => {
 
 
 
+
+
+
+/* ================= ROW FILL & PRINT CHOOSER ================= */
+
+.row-print-chooser-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 25000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(4px);
+}
+
+.row-print-chooser-modal {
+  width: min(460px, 94vw);
+  overflow: hidden;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 25px 70px rgba(15, 23, 42, 0.28);
+}
+
+.row-print-chooser-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 17px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.row-print-chooser-header h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.row-print-chooser-header p {
+  margin: 3px 0 0;
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.row-print-chooser-close {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.row-print-chooser-list {
+  padding: 10px;
+}
+
+.row-print-template-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-print-template-option:hover {
+  border-color: #dbeafe;
+  background: #eff6ff;
+}
+
+.row-print-template-icon {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: #f8fafc;
+  font-size: 17px;
+}
+
+.row-print-template-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.row-print-template-copy strong,
+.row-print-template-copy small {
+  display: block;
+}
+
+.row-print-template-copy strong {
+  color: #0f172a;
+  font-size: 12px;
+}
+
+.row-print-template-copy small {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.row-print-template-arrow {
+  color: #94a3b8;
+  font-size: 22px;
+  line-height: 1;
+}
 
 </style>
