@@ -7,6 +7,7 @@ import { ModuleTemplate } from '../entities/module-template.entity'
 
 import { ModulesService } from './modules.service'
 import { ModulesController } from './modules.controller'
+import { PdfTemplateService } from './services/pdf-template.service'
 
 @Module({
   imports: [
@@ -17,6 +18,9 @@ import { ModulesController } from './modules.controller'
     ]),
   ],
   controllers: [ModulesController],
-  providers: [ModulesService],
+  providers: [
+    ModulesService,
+    PdfTemplateService,
+  ],
 })
 export class ModulesModule {}

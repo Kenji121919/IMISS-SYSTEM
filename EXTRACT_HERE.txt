@@ -1,0 +1,24 @@
+IMISS ALARM SYSTEM — DIRECT OVERLAY PACKAGE
+
+Extract the CONTENTS of this ZIP directly into your IMISS repository root:
+
+C:\Users\Kenji\IMISS-SYSTEM
+
+After extraction, these paths must exist directly under the repository:
+
+backend\src\alarm\alarm.module.ts
+backend\src\alarm\alarm.controller.ts
+backend\src\alarm\alarm.service.ts
+backend\src\entities\log-alarm.entity.ts
+backend\src\entities\module-alarm-config.entity.ts
+frontend\src\components\alarms\AlarmModuleConfig.vue
+frontend\src\components\alarms\AlarmEditorModal.vue
+frontend\src\components\alarms\GlobalAlarmHost.vue
+frontend\src\views\admin\ManageModules.vue
+frontend\src\views\modules\DynamicModule.vue
+frontend\src\views\dashboard\Dashboard.vue
+
+Do NOT end up with:
+C:\Users\Kenji\IMISS-SYSTEM\IMISS_ALARM_SYSTEM_PACKAGE\backend\...
+
+If you see that extra IMISS_ALARM_SYSTEM_PACKAGE folder, the previous ZIP was extracted one level too deep and the running project will keep using the old files.
